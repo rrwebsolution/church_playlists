@@ -1,7 +1,6 @@
-// SongList.tsx
 import { useState, useMemo } from 'react';
 import { 
-  ArrowLeft, Music, PlayCircle, PauseCircle, 
+  ArrowLeft, Play, PlayCircle, PauseCircle, 
   Trash2, ChevronDown, Languages, Search, GripVertical, Copy, Edit3, Check, Guitar, PlusCircle, CheckCircle2
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'; 
@@ -111,15 +110,14 @@ export default function SongList(props: any) {
     Toast.fire({ icon: 'success', title: 'Added to folder!' });
   };
 
-  // --- BAG-O: HANDLE REMOVE SONG WITH SWAL ---
   const handleRemoveSong = async (song: Song) => {
     const result = await Swal.fire({
       title: 'Remove Song?',
       text: `Are you sure you want to remove "${song.title}" from this folder?`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonColor: '#ef4444', // red-500
-      cancelButtonColor: '#71717a',  // zinc-500
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#71717a',
       confirmButtonText: 'Yes, remove it!',
       cancelButtonText: 'Cancel'
     });
@@ -192,7 +190,7 @@ export default function SongList(props: any) {
         {activeFolder?.songs.length === 0 && !isLocalSearch ? (
           <div className="flex flex-col items-center justify-center py-24 bg-zinc-50 dark:bg-zinc-900/30 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-[2rem] text-center px-6">
             <div className="p-6 bg-indigo-50 dark:bg-indigo-500/10 rounded-full mb-4">
-               <Music className="w-10 h-10 text-indigo-500" />
+               <Search className="w-10 h-10 text-indigo-500" />
             </div>
             <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Setlist is Empty</h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 max-w-xs leading-relaxed">
@@ -236,7 +234,12 @@ export default function SongList(props: any) {
                                 <div className="flex items-center gap-4 min-w-0 group/info flex-1">
                                   <div onClick={(e) => handlePlaySong(e, song)} className="relative shrink-0 cursor-pointer">
                                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${isCurrentlyPlaying ? 'bg-indigo-600 text-white shadow-md' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 group-hover/info:bg-indigo-50 dark:group-hover/info:bg-indigo-500/10 group-hover/info:text-indigo-600'}`}>
-                                      {isCurrentlyPlaying && isPlaying ? <PlayingVisualizer /> : <Music className="w-5 h-5" />}
+                                      {/* --- GIBAG-O NA ANG ICON NGADTO SA PLAY ICON --- */}
+                                      {isCurrentlyPlaying ? (
+                                        isPlaying ? <PlayingVisualizer /> : <Play className="w-5 h-5 fill-current ml-0.5" />
+                                      ) : (
+                                        <Play className="w-5 h-5 fill-current ml-0.5" />
+                                      )}
                                     </div>
                                     <div className={`absolute inset-0 rounded-xl flex items-center justify-center transition-all duration-300 transform ${isCurrentlyPlaying ? 'opacity-100 scale-100 bg-indigo-600/80' : 'opacity-0 scale-75 group-hover/info:opacity-100 group-hover/info:scale-100 bg-zinc-900/40 dark:bg-black/50'}`}>
                                       {isCurrentlyPlaying && isPlaying ? <PauseCircle className="w-6 h-6 text-white" /> : <PlayCircle className="w-6 h-6 text-white" />}
@@ -273,7 +276,7 @@ export default function SongList(props: any) {
                                 ) : (
                                   <>
                                     <button 
-                                      onClick={() => handleRemoveSong(song)} // <-- GI-UPDATE ANI (SWAL)
+                                      onClick={() => handleRemoveSong(song)} 
                                       className="p-2.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all active:scale-90"
                                     >
                                       <Trash2 className="w-5 h-5" />
@@ -286,6 +289,7 @@ export default function SongList(props: any) {
                               </div>
                             </div>
 
+                            {/* TEXT / CHORDS EXPLORER SECTION */}
                             {expandedSongId === song.id && (
                               <div className="p-6 md:p-10 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-300">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">

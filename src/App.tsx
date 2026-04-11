@@ -37,9 +37,13 @@ export default function App() {
   const [isDataLoaded, setIsDataLoaded] = useState(false); 
   
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   
+  const [currentSong, setCurrentSong] = useState<Song | null>(() => {
+    const savedSong = localStorage.getItem('last_played_song');
+    return savedSong ? JSON.parse(savedSong) : null;
+  });
+
+  const [isPlaying, setIsPlaying] = useState(false);
   const ytPlayerRef = useRef<any>(null);
   
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(() => {
@@ -64,11 +68,15 @@ export default function App() {
   const activeVideoId = getYouTubeID(currentSong?.url);
   const prevPathname = useRef(location.pathname);
   
-  // REFS PARA SA SYNCING (REALTIME DATABASE)
   const lastSavedData = useRef<string>("");
-  const isSavingRef = useRef(false); // Checker aron dili mag-conflict ang fetch ug save
+  const isSavingRef = useRef(false); 
 
-  // --- RECORD HISTORY ---
+  useEffect(() => {
+    if (currentSong) {
+      localStorage.setItem('last_played_song', JSON.stringify(currentSong));
+    }
+  }, [currentSong]);
+
   useEffect(() => {
     if (currentSong) {
       setPlayHistory(prev => {
@@ -79,8 +87,9 @@ export default function App() {
     }
   }, [currentSong]);
 
-  // --- BG PLAY LOGIC ---
   useEffect(() => {
+    localStorage.setItem('bg_play_enabled', JSON.stringify(bgPlayEnabled));
+    
     if (prevPathname.current !== location.pathname) {
       if (!bgPlayEnabled) {
         setIsPlaying(false);
@@ -88,40 +97,42 @@ export default function App() {
       }
       prevPathname.current = location.pathname;
     }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && !bgPlayEnabled) {
+        setIsPlaying(false);
+        if (ytPlayerRef.current) ytPlayerRef.current.pauseVideo();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [location.pathname, bgPlayEnabled]);
 
-
-  // --- REAL-TIME DATABASE POLLING (ANG SOLUSYON PARA MAKITA SA UBANG USER) ---
   const fetchDatabase = useCallback(async () => {
-    // Kung nag-save pa ta sa database, ayaw sa i-fetch aron dili ma-overwrite atong gitrabaho
     if (isSavingRef.current) return; 
 
     try {
       const response = await axiosInstance.get('playlists');
       const dbDataString = JSON.stringify(response.data);
       
-      // Kung naay laing user nga nag-update sa database (lahi ang data sa DB kaysa sa atong last saved)
       if (dbDataString !== lastSavedData.current) {
-        setFolders(response.data); // I-update ang screen
-        lastSavedData.current = dbDataString; // I-update ang reference
+        setFolders(response.data); 
+        lastSavedData.current = dbDataString; 
       }
       
       if (!isDataLoaded) setIsDataLoaded(true);
     } catch (err) {
-      console.error("Failed to fetch from Laravel API", err);
       if (!isDataLoaded) setIsDataLoaded(true);
     }
   }, [isDataLoaded]);
 
-  // I-run ang fetch matag 3 ka segundo (Realtime feel)
   useEffect(() => {
-    fetchDatabase(); // Unang load
+    fetchDatabase(); 
     const pollInterval = setInterval(fetchDatabase, 3000); 
     return () => clearInterval(pollInterval);
   }, [fetchDatabase]);
 
-
-  // --- AUTO-SAVE TO LARAVEL ---
   useEffect(() => {
     if (!isAutoSaveEnabled || !isDataLoaded) return;
 
@@ -129,23 +140,20 @@ export default function App() {
     if (currentDataString === lastSavedData.current) return;
 
     const saveTimer = setTimeout(() => {
-      isSavingRef.current = true; // Markahan nga nag-save ta
-      
+      isSavingRef.current = true; 
       axiosInstance.post('playlists/sync', folders)
         .then(() => { 
           lastSavedData.current = currentDataString; 
-          isSavingRef.current = false; // Human nag save
+          isSavingRef.current = false; 
         })
-        .catch(err => {
-          console.error("AutoSave Failed:", err);
+        .catch(_err => {
           isSavingRef.current = false;
         });
-    }, 1500); // 1.5 seconds debounce
+    }, 1500); 
 
     return () => clearTimeout(saveTimer);
   }, [folders, isAutoSaveEnabled, isDataLoaded]);
 
-  // --- MAIN SEARCH & ADD HANDLER ---
   const handleHeaderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const query = inputValue.trim();
@@ -270,13 +278,15 @@ export default function App() {
   const handleTogglePlay = (playState: boolean) => {
     setIsPlaying(playState);
     if (ytPlayerRef.current) { 
-      if (playState) ytPlayerRef.current.playVideo(); 
-      else ytPlayerRef.current.pauseVideo(); 
+      if (playState) {
+        ytPlayerRef.current.playVideo(); 
+      } else {
+        ytPlayerRef.current.pauseVideo(); 
+      }
     }
   };
 
   useEffect(() => { setIsClient(true); }, []);
-  useEffect(() => { if (ytPlayerRef.current) { try { ytPlayerRef.current.setVolume(Math.round(volume * 100)); } catch (error) {} } }, [volume]);
 
   const currentActiveMenu = location.pathname.includes('playlist') ? 'folders' : location.pathname.includes('saved') ? 'saved' : location.pathname.includes('history') ? 'history' : 'home';
 
@@ -312,11 +322,27 @@ export default function App() {
               <div className="aspect-video relative bg-black pointer-events-none md:pointer-events-auto">
                 {activeVideoId && (
                   <YouTube
-                    key={activeVideoId} videoId={activeVideoId}
-                    opts={{ width: '100%', height: '100%', host: 'https://www.youtube-nocookie.com', playerVars: { autoplay: 1, controls: 1, modestbranding: 1, rel: 0, origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173' } }}
+                    key={activeVideoId} 
+                    videoId={activeVideoId}
+                    opts={{ 
+                      width: '100%', 
+                      height: '100%', 
+                      playerVars: { 
+                        autoplay: 1, 
+                        controls: 1, 
+                        modestbranding: 1, 
+                        rel: 0, 
+                        // GITANGTANG ANG HOST PROP
+                        origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000' 
+                      } 
+                    }}
                     onReady={(e) => { 
                       ytPlayerRef.current = e.target; 
                       try { e.target.setVolume(Math.round(volume * 100)); } catch (error) {} 
+                      
+                      if (isPlaying) {
+                        e.target.playVideo();
+                      }
                     }}
                     onStateChange={(e) => {
                       if (e.data === 1) setIsPlaying(true);  

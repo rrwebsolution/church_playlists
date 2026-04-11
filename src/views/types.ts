@@ -4,8 +4,9 @@ export interface Song {
   title: string;
   artist: string;
   url: string;
-  lyrics?: string | null;
-  chords?: string | null; // BAG-ONG GIDUGANG
+  file_path?: string | null; // Importante ni
+  lyrics?: string;
+  chords?: string;
 }
 
 export interface PlaylistFolder {

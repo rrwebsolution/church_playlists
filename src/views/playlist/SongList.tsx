@@ -1,13 +1,15 @@
 import { useState, useMemo } from 'react';
 import { 
   ArrowLeft, Play, PlayCircle, PauseCircle, 
-  Trash2, ChevronDown, Languages, Search, GripVertical, Copy, Edit3, Check, Guitar, PlusCircle, CheckCircle2
+  Trash2, ChevronDown, Languages, Search, GripVertical, Copy, Edit3, Check, Guitar, PlusCircle, CheckCircle2, Upload,
+  Music
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'; 
 import YoutubePreview from './YoutubePreview';
 import { PlayingVisualizer } from './FolderList';
 import type { PlaylistFolder, Song } from '../types';
 import Swal from 'sweetalert2';
+import axiosInstance from '../../plugin/axios';
 
 const Toast = Swal.mixin({
   toast: true,
@@ -41,7 +43,8 @@ export default function SongList(props: any) {
   const { 
     folders, setFolders, activeFolderId, setActiveFolderId, 
     currentSong, setCurrentSong, setIsPlaying, isPlaying,
-    inputValue, setInputValue, searchMode, youtubeResults, setYoutubeResults, isFetching
+    inputValue, setInputValue, searchMode, youtubeResults, setYoutubeResults, isFetching,
+    isAutoPlayNextEnabled, setIsAutoPlayNextEnabled 
   } = props;
 
   const [expandedSongId, setExpandedSongId] = useState<string | null>(null);
@@ -64,12 +67,8 @@ export default function SongList(props: any) {
   }, [folders]);
 
   const isLocalSearch = searchMode === 'local' && inputValue.trim().length > 0;
-  
   const songsToDisplay = isLocalSearch 
-    ? globalLibrary.filter((s: Song) => 
-        s.title.toLowerCase().includes(inputValue.toLowerCase()) || 
-        (s.artist && s.artist.toLowerCase().includes(inputValue.toLowerCase()))
-      )
+    ? globalLibrary.filter((s: Song) => s.title.toLowerCase().includes(inputValue.toLowerCase()) || (s.artist && s.artist.toLowerCase().includes(inputValue.toLowerCase())))
     : (activeFolder?.songs || []);
 
   const onDragEnd = (result: any) => {
@@ -91,12 +90,8 @@ export default function SongList(props: any) {
 
   const handlePlaySong = (e: React.MouseEvent, song: Song) => {
     e.stopPropagation();
-    if (currentSong?.id === song.id) {
-      setIsPlaying(!isPlaying); 
-    } else {
-      setCurrentSong(song);
-      setIsPlaying(true);
-    }
+    if (currentSong?.id === song.id) { setIsPlaying(!isPlaying); } 
+    else { setCurrentSong(song); setIsPlaying(true); }
   };
 
   const handleAddToFolder = (song: Song) => {
@@ -123,11 +118,7 @@ export default function SongList(props: any) {
     });
 
     if (result.isConfirmed) {
-      setFolders((prev: PlaylistFolder[]) => prev.map(f => 
-        f.id === activeFolderId 
-          ? { ...f, songs: f.songs.filter(s => s.id !== song.id) } 
-          : f
-      ));
+      setFolders((prev: PlaylistFolder[]) => prev.map(f => f.id === activeFolderId ? { ...f, songs: f.songs.filter(s => s.id !== song.id) } : f));
       Toast.fire({ icon: 'success', title: 'Song removed' });
     }
   };
@@ -135,12 +126,7 @@ export default function SongList(props: any) {
   const handleSaveText = (songId: string) => {
     setFolders((prev: PlaylistFolder[]) => prev.map(folder => {
       if (folder.id === activeFolderId) {
-        return {
-          ...folder,
-          songs: folder.songs.map(song => 
-            song.id === songId ? { ...song, [activeTab]: tempText } : song
-          )
-        };
+        return { ...folder, songs: folder.songs.map(song => song.id === songId ? { ...song, [activeTab]: tempText } : song) };
       }
       return folder;
     }));
@@ -148,54 +134,74 @@ export default function SongList(props: any) {
     Toast.fire({ icon: 'success', title: `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} saved!` });
   };
 
+  // --- UPLOAD MP3 LOGIC ---
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeFolderId) return;
+
+    const formData = new FormData();
+    formData.append('audio', file);
+    formData.append('folder_id', activeFolderId);
+    formData.append('title', file.name.replace('.mp3', ''));
+
+    Swal.fire({ title: 'Uploading MP3...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    try {
+      const res = await axiosInstance.post('playlists/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setFolders((prev: any) => prev.map((f: any) => f.id === activeFolderId ? { ...f, songs: [...f.songs, res.data] } : f));
+      Swal.close();
+      Toast.fire({ icon: 'success', title: 'MP3 Uploaded!' });
+    } catch (err) {
+      Swal.fire({ icon: 'error', title: 'Upload failed', text: 'Please check your server settings.' });
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-2">
         <div className="flex items-center gap-4 min-w-0">
-          <button 
-            onClick={() => { setActiveFolderId(null); setYoutubeResults([]); setInputValue(''); }} 
-            className="p-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shadow-sm transition-all active:scale-90 group"
-          >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-          </button>
+          <button onClick={() => { setActiveFolderId(null); setYoutubeResults([]); setInputValue(''); }} className="p-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shadow-sm transition-all active:scale-90 group"><ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" /></button>
           <div className="min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold truncate tracking-tight text-zinc-900 dark:text-zinc-100 uppercase">
-              {activeFolder?.name}
-            </h1>
+            <h1 className="text-2xl md:text-3xl font-bold truncate tracking-tight text-zinc-900 dark:text-zinc-100 uppercase">{activeFolder?.name}</h1>
             <div className="flex items-center gap-2 mt-1">
               <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse" />
-              <p className="text-zinc-500 text-[11px] font-semibold uppercase tracking-wider">
-                {isLocalSearch ? `Global Library Search: "${inputValue}"` : `Folder Setlist`}
-              </p>
+              <p className="text-zinc-500 text-[11px] font-semibold uppercase tracking-wider">{isLocalSearch ? `Global Library Search: "${inputValue}"` : `Folder Setlist`}</p>
             </div>
           </div>
+        </div>
+
+        <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+           {/* UPLOAD MP3 BUTTON */}
+           <label className="flex items-center gap-2 px-4 py-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl cursor-pointer hover:bg-indigo-500 hover:text-white dark:hover:bg-indigo-600 transition-all shadow-sm active:scale-95 whitespace-nowrap">
+             <Upload className="w-4 h-4" />
+             <span className="text-[10px] font-bold uppercase tracking-wider">Upload MP3</span>
+             <input type="file" accept="audio/*" className="hidden" onChange={handleFileUpload} />
+           </label>
+           
+           {!isLocalSearch && (
+             <div className="flex items-center justify-between gap-4 bg-white dark:bg-zinc-900 px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm whitespace-nowrap shrink-0">
+               <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                 Auto-Play Next: <span className={isAutoPlayNextEnabled ? "text-indigo-500" : "text-zinc-400"}>{isAutoPlayNextEnabled ? "ON" : "OFF"}</span>
+               </span>
+               <button onClick={() => setIsAutoPlayNextEnabled(!isAutoPlayNextEnabled)} className={`relative w-10 h-5 rounded-full transition-colors ${isAutoPlayNextEnabled ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'}`}>
+                  <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform shadow-sm ${isAutoPlayNextEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+               </button>
+             </div>
+           )}
         </div>
       </div>
 
       <div className="space-y-6">
+        {searchMode === 'youtube' && (<YoutubePreview youtubeResults={youtubeResults} setYoutubeResults={setYoutubeResults} isFetching={isFetching} activeFolderId={activeFolderId} setFolders={setFolders} setInputValue={setInputValue} inputValue={inputValue} />)}
         
-        {searchMode === 'youtube' && (
-          <YoutubePreview 
-            youtubeResults={youtubeResults} 
-            setYoutubeResults={setYoutubeResults} 
-            isFetching={isFetching} 
-            activeFolderId={activeFolderId} 
-            setFolders={setFolders} 
-            setInputValue={setInputValue} 
-            inputValue={inputValue} 
-          />
-        )}
-
         {activeFolder?.songs.length === 0 && !isLocalSearch ? (
           <div className="flex flex-col items-center justify-center py-24 bg-zinc-50 dark:bg-zinc-900/30 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-[2rem] text-center px-6">
-            <div className="p-6 bg-indigo-50 dark:bg-indigo-500/10 rounded-full mb-4">
-               <Search className="w-10 h-10 text-indigo-500" />
-            </div>
+            <div className="p-6 bg-indigo-50 dark:bg-indigo-500/10 rounded-full mb-4"><Music className="w-10 h-10 text-indigo-500" /></div>
             <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Setlist is Empty</h3>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 max-w-xs leading-relaxed">
-              Search a song or use "Local Library" to add existing tracks to <span className="text-indigo-600 font-semibold">{activeFolder?.name}</span>.
-            </p>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 max-w-xs leading-relaxed">Search a song or use "Local Library" to add existing tracks to <span className="text-indigo-600 font-semibold">{activeFolder?.name}</span>.</p>
           </div>
         ) : isLocalSearch && songsToDisplay.length === 0 ? (
           <div className="py-24 text-center bg-zinc-50 dark:bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-200 dark:border-zinc-800">
@@ -210,86 +216,42 @@ export default function SongList(props: any) {
                   {songsToDisplay.map((song:any, index:any) => {
                     const isCurrentlyPlaying = currentSong?.id === song.id;
                     const alreadyInFolder = activeFolder?.songs.some((s: Song) => s.url === song.url);
+                    const isMp3 = !song.url.includes('youtube');
 
                     return (
                       <Draggable key={song.id} draggableId={song.id} index={index} isDragDisabled={isLocalSearch}>
                         {(provided, snapshot) => (
-                          <div 
-                            ref={provided.innerRef} 
-                            {...provided.draggableProps} 
-                            style={{...provided.draggableProps.style, left: "auto", top: "auto" }} 
-                            className={`group overflow-hidden border transition-all duration-300 rounded-[1.5rem] bg-white dark:bg-zinc-900
-                              ${snapshot.isDragging ? 'shadow-xl border-indigo-500 scale-[1.01] z-50' : 'border-zinc-200 dark:border-zinc-800 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500/50'}
-                            `}
-                          >
+                          <div ref={provided.innerRef} {...provided.draggableProps} style={{...provided.draggableProps.style, left: "auto", top: "auto" }} className={`group overflow-hidden border transition-all duration-300 rounded-[1.5rem] bg-white dark:bg-zinc-900 ${snapshot.isDragging ? 'shadow-xl border-indigo-500 scale-[1.01] z-50' : 'border-zinc-200 dark:border-zinc-800 shadow-sm hover:border-indigo-400 dark:hover:border-indigo-500/50'}`}>
                             <div className="flex items-center justify-between p-4 md:p-5">
                               <div className="flex items-center gap-4 min-w-0 flex-1">
-                                
-                                {!isLocalSearch && (
-                                  <div {...provided.dragHandleProps} className="hidden sm:flex text-zinc-400 hover:text-zinc-600 cursor-grab active:cursor-grabbing px-1">
-                                    <GripVertical className="w-5 h-5" />
-                                  </div>
-                                )}
-                                
+                                {!isLocalSearch && <div {...provided.dragHandleProps} className="hidden sm:flex text-zinc-400 hover:text-zinc-600 cursor-grab active:cursor-grabbing px-1"><GripVertical className="w-5 h-5" /></div>}
                                 <div className="flex items-center gap-4 min-w-0 group/info flex-1">
                                   <div onClick={(e) => handlePlaySong(e, song)} className="relative shrink-0 cursor-pointer">
                                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-colors ${isCurrentlyPlaying ? 'bg-indigo-600 text-white shadow-md' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 group-hover/info:bg-indigo-50 dark:group-hover/info:bg-indigo-500/10 group-hover/info:text-indigo-600'}`}>
-                                      {/* --- GIBAG-O NA ANG ICON NGADTO SA PLAY ICON --- */}
-                                      {isCurrentlyPlaying ? (
-                                        isPlaying ? <PlayingVisualizer /> : <Play className="w-5 h-5 fill-current ml-0.5" />
-                                      ) : (
-                                        <Play className="w-5 h-5 fill-current ml-0.5" />
-                                      )}
+                                      {isCurrentlyPlaying ? (isPlaying ? <PlayingVisualizer /> : <Play className="w-5 h-5 fill-current ml-0.5" />) : <Play className="w-5 h-5 fill-current ml-0.5" />}
                                     </div>
                                     <div className={`absolute inset-0 rounded-xl flex items-center justify-center transition-all duration-300 transform ${isCurrentlyPlaying ? 'opacity-100 scale-100 bg-indigo-600/80' : 'opacity-0 scale-75 group-hover/info:opacity-100 group-hover/info:scale-100 bg-zinc-900/40 dark:bg-black/50'}`}>
                                       {isCurrentlyPlaying && isPlaying ? <PauseCircle className="w-6 h-6 text-white" /> : <PlayCircle className="w-6 h-6 text-white" />}
                                     </div>
                                     {!isLocalSearch && <span className="absolute -bottom-2 -left-2 bg-white dark:bg-zinc-900 text-zinc-500 font-mono text-[9px] w-5 h-5 flex items-center justify-center rounded-md border border-zinc-200 dark:border-zinc-700">{index + 1}</span>}
                                   </div>
-                                  
                                   <div onClick={() => { setExpandedSongId(expandedSongId === song.id ? null : song.id); setEditingId(null); }} className="flex flex-col min-w-0 flex-1 cursor-pointer">
-                                    <span className={`truncate text-sm md:text-base transition-colors ${isCurrentlyPlaying ? 'text-indigo-600 dark:text-indigo-400 font-bold' : 'text-zinc-900 dark:text-zinc-100 font-semibold group-hover/info:text-indigo-600'}`}>
-                                      {song.title}
-                                    </span>
-                                    <span className="text-zinc-500 dark:text-zinc-400 text-[10px] font-medium uppercase tracking-wider truncate mt-0.5">
-                                      {song.artist || 'Unknown Artist'}
-                                    </span>
+                                    <span className={`truncate text-sm md:text-base transition-colors ${isCurrentlyPlaying ? 'text-indigo-600 dark:text-indigo-400 font-bold' : 'text-zinc-900 dark:text-zinc-100 font-semibold group-hover/info:text-indigo-600'}`}>{song.title}</span>
+                                    <span className="text-zinc-500 dark:text-zinc-400 text-[10px] font-medium uppercase tracking-wider truncate mt-0.5">{song.artist || 'Unknown Artist'} {isMp3 && " • MP3 FILE"}</span>
                                   </div>
                                 </div>
                               </div>
-
                               <div className="flex items-center gap-1 md:gap-2 shrink-0 ml-4">
-                                
                                 {isLocalSearch ? (
-                                  alreadyInFolder ? (
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-green-200 dark:border-green-500/20">
-                                      <CheckCircle2 className="w-4 h-4" /> In Folder
-                                    </div>
-                                  ) : (
-                                    <button 
-                                      onClick={() => handleAddToFolder(song)}
-                                      className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-700 transition-all active:scale-95 shadow-md"
-                                    >
-                                      <PlusCircle className="w-4 h-4" /> Add
-                                    </button>
-                                  )
+                                  alreadyInFolder ? <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-green-200 dark:border-green-500/20"><CheckCircle2 className="w-4 h-4" /> In Folder</div> : <button onClick={() => handleAddToFolder(song)} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-indigo-700 transition-all active:scale-95 shadow-md"><PlusCircle className="w-4 h-4" /> Add</button>
                                 ) : (
                                   <>
-                                    <button 
-                                      onClick={() => handleRemoveSong(song)} 
-                                      className="p-2.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all active:scale-90"
-                                    >
-                                      <Trash2 className="w-5 h-5" />
-                                    </button>
-                                    <button onClick={() => { setExpandedSongId(expandedSongId === song.id ? null : song.id); setEditingId(null); }} className={`p-2.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-transform ${expandedSongId === song.id ? 'rotate-180 text-indigo-600' : ''}`}>
-                                      <ChevronDown className="w-5 h-5" />
-                                    </button>
+                                    <button onClick={() => handleRemoveSong(song)} className="p-2.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all active:scale-90"><Trash2 className="w-5 h-5" /></button>
+                                    <button onClick={() => { setExpandedSongId(expandedSongId === song.id ? null : song.id); setEditingId(null); }} className={`p-2.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-transform ${expandedSongId === song.id ? 'rotate-180 text-indigo-600' : ''}`}><ChevronDown className="w-5 h-5" /></button>
                                   </>
                                 )}
                               </div>
                             </div>
-
-                            {/* TEXT / CHORDS EXPLORER SECTION */}
                             {expandedSongId === song.id && (
                               <div className="p-6 md:p-10 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 animate-in slide-in-from-top-2 duration-300">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">

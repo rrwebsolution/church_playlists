@@ -72,22 +72,7 @@ export default function App() {
   useEffect(() => { foldersRef.current = folders; }, [folders]);
   useEffect(() => { autoPlayRef.current = isAutoPlayNextEnabled; }, [isAutoPlayNextEnabled]);
 
-  useEffect(() => {
-    if ('mediaSession' in navigator && currentSong) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: currentSong.title,
-        artist: currentSong.artist,
-        artwork: [
-          { src: `https://i.ytimg.com/vi/${getYouTubeID(currentSong.url)}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' }
-        ]
-      });
-
-      // Kontrol sa Lock Screen
-      navigator.mediaSession.setActionHandler('play', () => handleTogglePlay(true));
-      navigator.mediaSession.setActionHandler('pause', () => handleTogglePlay(false));
-      navigator.mediaSession.setActionHandler('nexttrack', () => handleSongEnded());
-    }
-  }, [currentSong]);
+  
 
   // Sa sulod sa App component
 const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -414,6 +399,61 @@ useEffect(() => {
 
   const currentActiveMenu = location.pathname.includes('playlist') ? 'folders' : location.pathname.includes('saved') ? 'saved' : 'home';
 
+  // --- MEDIA SESSION API (Lock Screen Info & Controls) ---
+  useEffect(() => {
+    if ('mediaSession' in navigator && currentSong) {
+      const videoId = getYouTubeID(currentSong.url);
+      
+      // 1. I-set ang impormasyon sa kanta nga mugawas sa Lock Screen
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentSong.title,
+        artist: currentSong.artist || 'Unknown Artist',
+        album: activeFolderId ? folders.find(f => f.id === activeFolderId)?.name : 'Worship DJ',
+        artwork: [
+          { 
+            src: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, 
+            sizes: '480x360', 
+            type: 'image/jpeg' 
+          },
+          { 
+            src: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`, 
+            sizes: '1280x720', 
+            type: 'image/jpeg' 
+          }
+        ]
+      });
+
+      // 2. I-set ang mga buttons sa Lock Screen
+      navigator.mediaSession.setActionHandler('play', () => {
+        handleTogglePlay(true);
+      });
+
+      navigator.mediaSession.setActionHandler('pause', () => {
+        handleTogglePlay(false);
+      });
+
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        handleSongEnded();
+      });
+
+      // Opsyonal: Kung gusto nimo naay Previous button sa lock screen
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        // I-add ang imong previous song logic diri kung naa na
+        console.log("Previous song clicked from lock screen");
+      });
+    }
+
+    // Limpyohon ang handlers inig gawas sa app aron dili mag-conflict
+    return () => {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', null);
+        navigator.mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+      }
+    };
+  }, [currentSong, activeFolderId, handleSongEnded]); // Mo-update ni taga ilis sa kanta
+  
   return (
     <div className="flex h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden relative">
       <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} />

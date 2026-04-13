@@ -13,7 +13,7 @@ import {
 import type { Song } from '../types';
 
 export default function History() {
-  const { playHistory = [], setPlayHistory, setCurrentSong, setIsPlaying } = useOutletContext<any>();
+  const { playHistory = [], setPlayHistory, setCurrentSong, selectSong, setIsPlaying } = useOutletContext<any>();
   
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -52,8 +52,7 @@ export default function History() {
   };
 
   const handlePlayAgain = (song: Song) => {
-    setCurrentSong(song);
-    setIsPlaying(true);
+    selectSong?.(song) ?? (setCurrentSong(song), setIsPlaying(true));
   };
 
   const handleClearHistory = () => {

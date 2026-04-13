@@ -1,7 +1,6 @@
 import { Music, X, Folder, Bookmark, History, Settings } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-// 1. Gi-update ang Interface aron motukma sa imong routing logic
 interface SidebarProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
@@ -11,7 +10,6 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 2. Kompleto nga Menu Items
   const menuItems = [
     { id: 'playlist', path: '/app/playlist', label: 'My Playlists', icon: Folder },
     { id: 'saved', path: '/app/saved', label: 'Saved Songs', icon: Bookmark },
@@ -25,7 +23,7 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
         <div className="flex items-center gap-3">
           <Music className="w-6 h-6" /> JAMC Worship DJ
         </div>
-        <button className="md:hidden text-zinc-400" onClick={() => setIsSidebarOpen(false)}><X /></button>
+        <button className="md:hidden text-zinc-400" onClick={() => setIsSidebarOpen(false)}><X className="w-6 h-6" /></button>
       </div>
 
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">

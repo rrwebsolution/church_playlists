@@ -1,7 +1,15 @@
 import axios from "axios";
 
-// Kuhaon nato ang URL sa .env. Kung undefined, automatic niyang gamiton ang localhost:8000
-const apiUrl = import.meta.env.VITE_URL;
+// Kuhaon nato ang URL sa .env.
+const apiUrl = import.meta.env.VITE_URL || 'http://localhost:8000';
+
+// Maghimo tag "Map" para i-track ang mga nagdagan nga requests
+const pendingRequests = new Map();
+
+// Helper function para maghimo og unique key (ex: "get:/api/playlists")
+const generateRequestKey = (config:any) => {
+    return `${config.method}:${config.url}`;
+};
 
 const instance = axios.create({
     baseURL: `${apiUrl}/api/`,
@@ -10,5 +18,46 @@ const instance = axios.create({
         'Accept': 'application/json',
     }
 });
+
+// REQUEST INTERCEPTOR: Diri nato pugngan ang duplicate
+instance.interceptors.request.use(
+    (config) => {
+        const requestKey = generateRequestKey(config);
+
+        // Kung naa nay nagdagan nga kaparehas nga request, i-cancel ang karaan
+        if (pendingRequests.has(requestKey)) {
+            const controller = pendingRequests.get(requestKey);
+            controller.abort("Duplicate request cancelled automatically.");
+        }
+
+        // Maghimo tag bag-ong tig-kontrol (AbortController) para aning bag-ong request
+        const controller = new AbortController();
+        config.signal = controller.signal;
+        pendingRequests.set(requestKey, controller);
+
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
+
+// RESPONSE INTERCEPTOR: Diri nato limpyohan ang na track nga request kung nahuman na
+instance.interceptors.response.use(
+    (response) => {
+        const requestKey = generateRequestKey(response.config);
+        pendingRequests.delete(requestKey); // Tangtangon sa listahan kay success na
+        return response;
+    },
+    (error) => {
+        // Kung na-cancel nato ang request, ayaw ipakita nga error sa console/UI
+        if (axios.isCancel(error)) {
+            console.log('Request cancelled:', error.message);
+        } else if (error.config) {
+            // Kung tinuod nga error, tangtangon gihapon sa listahan
+            const requestKey = generateRequestKey(error.config);
+            pendingRequests.delete(requestKey);
+        }
+        return Promise.reject(error);
+    }
+);
 
 export default instance;

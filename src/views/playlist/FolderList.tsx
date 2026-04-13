@@ -172,13 +172,18 @@ export default function FolderList({
         {/* FILTER BUTTON */}
         <button 
           onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
-          className="flex items-center gap-2.5 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-2xl px-6 py-3.5 rounded-full border border-zinc-200/80 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.2)] transition-all hover:border-indigo-500/50 hover:text-indigo-600 dark:hover:text-indigo-400 text-zinc-600 dark:text-zinc-300 active:scale-95 group"
+          className="group flex items-center gap-3 bg-zinc-100/50 dark:bg-zinc-800/50 hover:bg-white dark:hover:bg-zinc-800 p-1.5 pr-4 rounded-full border border-zinc-200/50 dark:border-white/5 shadow-sm transition-all active:scale-95"
         >
-          <Filter className="w-4 h-4" />
-          <div className="flex flex-col items-start leading-none mt-0.5">
-            <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">Sort By</span>
-            <span className="text-[11px] font-black uppercase tracking-widest group-hover:text-indigo-500 transition-colors">
-              {sortOrder === 'newest' ? 'Newest' : 'Oldest'}
+          {/* Icon with background circle */}
+          <div className={`p-2 rounded-full transition-all duration-500 ${sortOrder === 'newest' ? 'bg-indigo-500 text-white rotate-0' : 'bg-amber-500 text-white rotate-180'}`}>
+            <Filter className="w-3.5 h-3.5" />
+          </div>
+          
+          {/* Text labels */}
+          <div className="flex flex-col items-start leading-tight">
+            <span className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-500">Sort By</span>
+            <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-200 uppercase tracking-wider">
+              {sortOrder === 'newest' ? 'Newest First' : 'Oldest First'}
             </span>
           </div>
         </button>

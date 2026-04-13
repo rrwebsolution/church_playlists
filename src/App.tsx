@@ -62,6 +62,33 @@ export default function App() {
   const lastSavedData = useRef<string>("");
   const isSavingRef = useRef(false);
 
+  // --- LATEST STATE REFS (Para mawala ang TypeScript errors) ---
+  const currentSongRef = useRef<Song | null>(currentSong);
+  const foldersRef = useRef<PlaylistFolder[]>(folders);
+  const autoPlayRef = useRef<boolean>(isAutoPlayNextEnabled);
+
+  // Kini nga useEffect mag-update sa Refs taga-usab sa imong state
+  useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
+  useEffect(() => { foldersRef.current = folders; }, [folders]);
+  useEffect(() => { autoPlayRef.current = isAutoPlayNextEnabled; }, [isAutoPlayNextEnabled]);
+
+  useEffect(() => {
+    if ('mediaSession' in navigator && currentSong) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentSong.title,
+        artist: currentSong.artist,
+        artwork: [
+          { src: `https://i.ytimg.com/vi/${getYouTubeID(currentSong.url)}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' }
+        ]
+      });
+
+      // Kontrol sa Lock Screen
+      navigator.mediaSession.setActionHandler('play', () => handleTogglePlay(true));
+      navigator.mediaSession.setActionHandler('pause', () => handleTogglePlay(false));
+      navigator.mediaSession.setActionHandler('nexttrack', () => handleSongEnded());
+    }
+  }, [currentSong]);
+
   // Sa sulod sa App component
 const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -282,45 +309,44 @@ useEffect(() => {
     }
   };
 
-  // --- SONG ENDED HANDLER (FIXED AUTO-PLAY NEXT LOGIC) ---
+  // --- SONG ENDED HANDLER (WITH AUTO-LOOP TO FIRST SONG) ---
   const handleSongEnded = useCallback(() => {
-    // 1. KUNG NAKA-OFF: Hunong na diri, ayaw na pangita og sunod kanta
-    if (!isAutoPlayNextEnabled) {
-      setIsPlaying(false);
-      // Opsyonal: mahimo sad nimo i-pause ang player para sigurado
-      if (ytPlayer) ytPlayer.pauseVideo(); 
-      return;
-    }
-
-    // 2. KUNG NAKA-ON: Pangitaon ang folder sa kasamtangang kanta
-    const currentFolder = folders.find(f => f.songs.some(s => s.id === currentSong?.id));
-    const currentPlaylist = currentFolder?.songs || [];
-    
-    if (currentPlaylist.length === 0) {
+    // 1. Check kung naka-ON ang Auto-Play
+    if (!autoPlayRef.current) {
       setIsPlaying(false);
       return;
     }
 
-    const currentIndex = currentPlaylist.findIndex(s => s.id === currentSong?.id);
-    const nextIndex = currentIndex + 1;
+    // 2. Pangitaon ang folder sa kanta karon gamit ang Refs (para dili ma-stale sa iOS)
+    const currentFolder = foldersRef.current.find(f => 
+      f.songs.some(s => s.id === currentSongRef.current?.id)
+    );
 
-    // 3. I-check kung naa pa ba'y sunod nga kanta sa listahan
-    if (nextIndex < currentPlaylist.length) {
-      const nextSong = currentPlaylist[nextIndex];
-      setCurrentSong(nextSong);
-      setIsPlaying(true);
-      
-      // I-load dayon ang bag-ong kanta sa player
-      const nextId = getYouTubeID(nextSong.url);
-      if (ytPlayer && nextId) {
-        ytPlayer.loadVideoById(nextId);
-        ytPlayer.playVideo();
-      }
-    } else {
-      // Kung naabot na sa tumoy sa listahan ug wala na'y sunod
+    if (!currentFolder || currentFolder.songs.length === 0) {
       setIsPlaying(false);
+      return;
     }
-  }, [folders, currentSong, isAutoPlayNextEnabled, ytPlayer]);
+
+    const playlist = currentFolder.songs;
+    const currentIndex = playlist.findIndex(s => s.id === currentSongRef.current?.id);
+
+    // 3. KINI ANG LOOP LOGIC:
+    // (currentIndex + 1) % playlist.length
+    // Pananglitan: Kung naa sa song index 4 out of 5 songs -> (4 + 1) % 5 = 0 (Balik sa una!)
+    const nextIndex = (currentIndex + 1) % playlist.length;
+    const nextSong = playlist[nextIndex];
+
+    // 4. I-update ang state para mo-trigger ang player sync
+    setCurrentSong(nextSong);
+    setIsPlaying(true);
+
+    // 5. Para sa iOS stability: load diritso ang video id
+    const nextId = getYouTubeID(nextSong.url);
+    if (ytPlayer && nextId) {
+      ytPlayer.loadVideoById(nextId);
+      ytPlayer.playVideo();
+    }
+  }, [ytPlayer]); // Dependency is only ytPlayer kay Ref na ang uban
 
   useEffect(() => {
     if (searchMode !== 'youtube' || inputValue.trim().length < 2) {

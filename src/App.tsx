@@ -46,7 +46,7 @@ export default function App() {
   const [isDataLoaded, setIsDataLoaded] = useState(false); 
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const activeFolder = folders.find(f => f.id === activeFolderId) || null;
-  
+
   const [currentSong, setCurrentSong] = useState<Song | null>(() => {
     const saved = localStorage.getItem('last_played_song');
     return saved ? JSON.parse(saved) : null;
@@ -77,6 +77,17 @@ export default function App() {
   const lastSavedData = useRef<string>("");
   const isSavingRef = useRef(false);
   const nodeRef = useRef(null);
+
+  useEffect(() => {
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+
+  // Kung iOS o Safari, i-default nato nga naka-ICON (TV icon) ra una
+  if (isIOS || isSafari) {
+    setShowFloatingPlayer(false);
+  }
+}, []);
 
   // REFS PARA MA-ACCESS SA VANILLA JS CALLBACKS NGA DILI STALE
   const currentSongRef = useRef<Song | null>(currentSong);

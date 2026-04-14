@@ -350,7 +350,8 @@ useEffect(() => {
   };
 
   // --- SONG ENDED HANDLER (OPTIMIZED FOR IOS/SAFARI) ---
-const handleSongEnded = useCallback(() => {
+  const handleSongEnded = useCallback(() => {
+    console.debug('handleSongEnded called', { currentSongId: currentSongRef.current?.id, isSafariOrIos, isAudioUnlocked });
   // 1. Check kung naka-ON ang Auto-Play
   if (!autoPlayRef.current) {
     setIsPlaying(false);
@@ -400,6 +401,7 @@ const handleSongEnded = useCallback(() => {
   // Ayaw paghulat sa React re-render. Kinahanglan diritso ang command sa iframe.
   if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
     try {
+      console.debug('handleSongEnded: loading next video', { nextId, isSafariOrIos, isAudioUnlocked });
       ytPlayer.loadVideoById({
         videoId: nextId,
         startSeconds: 0,
@@ -423,7 +425,7 @@ const handleSongEnded = useCallback(() => {
       console.error("iOS Autoplay Error:", err);
     }
   }
-}, [ytPlayer]); // Ang ytPlayer ra ang dependency
+}, [ytPlayer, isSafariOrIos, isAudioUnlocked]); // Ang ytPlayer ra ang dependency
 
   useEffect(() => {
     if (searchMode !== 'youtube' || inputValue.trim().length < 2) {

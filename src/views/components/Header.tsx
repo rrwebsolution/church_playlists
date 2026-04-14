@@ -1,5 +1,5 @@
 import { 
-  Menu, FolderPlus, Plus, Search, Sun, Moon, Laptop, 
+  Menu, Plus, Search, Sun, Moon, Laptop, 
   ChevronDown, User, Headphones, DownloadCloud, X,
 } from 'lucide-react';
 import React, { useEffect, useState, useRef } from 'react';
@@ -77,8 +77,15 @@ export const Header = ({
       if (searchMode === 'link') return { placeholder: "Paste YouTube URL here...", buttonText: isFetching ? "Fetching..." : "Add Link", Icon: Plus, showInput: true };
       if (searchMode === 'local') return { placeholder: "Search saved song in this folder...", buttonText: "", Icon: Search, showInput: true };
     } 
+    // Pangitaa kani nga part sa Header.tsx
     if (activeMenu === 'folders' && !activeFolderId) {
-      return { placeholder: "Search or create folder...", buttonText: "Create", Icon: FolderPlus, showInput: true, isSubmitDisabled: query.length === 0 };
+      return { 
+        placeholder: "Search folder...", // Giilisan ang text
+        buttonText: "Search",            // Giilisan ang button text
+        Icon: Search,                    // Giilisan gikan sa FolderPlus ngadto sa Search
+        showInput: true, 
+        isSubmitDisabled: query.length === 0 
+      };
     }
     return { label: "Worship DJ", showInput: false };
   };
@@ -294,16 +301,21 @@ export const Header = ({
             </div>
             
             {/* SEARCH BUTTON (Visible only if not local mode) */}
-            <button 
-                type="submit" 
-                disabled={isFetching || !inputValue.trim() || info.isSubmitDisabled}
-                className={`bg-indigo-600 hover:bg-indigo-700 px-4 md:px-6 rounded-r-2xl text-[10px] md:text-xs font-bold flex items-center gap-2 text-white transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:grayscale shrink-0 
-                  ${searchMode === 'local' && (activeFolderId || activeMenu === 'saved') ? 'hidden' : 'flex'}
-                `}
-              >
-                {isFetching ? <div className="w-3 h-3 md:w-4 md:h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <info.Icon className="w-3 h-3 md:w-4 md:h-4" />}
-              <span className="hidden sm:inline">{info.buttonText}</span>
-            </button>
+<button 
+  type="submit" 
+  // GIKUHA NATO ANG 'isFetching' DIRI ARON PIRME CLICKABLE BASTA NAAY GI-TYPE
+  disabled={!inputValue.trim() || info.isSubmitDisabled}
+  className={`bg-indigo-600 hover:bg-indigo-700 px-4 md:px-6 rounded-r-2xl text-[10px] md:text-xs font-bold flex items-center gap-2 text-white transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50 disabled:grayscale shrink-0 
+    ${searchMode === 'local' && (activeFolderId || activeMenu === 'saved') ? 'hidden' : 'flex'}
+  `}
+>
+  {isFetching ? (
+    <div className="w-3 h-3 md:w-4 md:h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+  ) : (
+    <info.Icon className="w-3 h-3 md:w-4 md:h-4" />
+  )}
+  <span className="hidden sm:inline">{info.buttonText}</span>
+</button>
             </form>
           )}
         </div>

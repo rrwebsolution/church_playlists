@@ -28,6 +28,14 @@ const routes = [
         )
       },
       {
+        path: 'playlist/:folderId', 
+        element: (
+          <Suspense fallback={<Loader />}>
+            <Playlist />
+          </Suspense>
+        )
+      },
+      {
         path: 'saved',
         element: (
           <Suspense fallback={<Loader />}>

@@ -35,9 +35,13 @@ export default function App() {
   const [youtubeResults, setYoutubeResults] = useState<any[]>([]);
   const [importingId, setImportingId] = useState<string | null>(null);
 
+  
+
   const [folders, setFolders] = useState<PlaylistFolder[]>([]);
+  
   const [isDataLoaded, setIsDataLoaded] = useState(false); 
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const activeFolder = folders.find(f => f.id === activeFolderId) || null;
   
   const [currentSong, setCurrentSong] = useState<Song | null>(() => {
     const saved = localStorage.getItem('last_played_song');
@@ -53,14 +57,24 @@ export default function App() {
   });
 
   const [bgPlayEnabled, setBgPlayEnabled] = useState(true);
-  const [playHistory, setPlayHistory] = useState<any[]>([]);
+  const [playHistory, setPlayHistory] = useState<any[]>(() => {
+    const saved = localStorage.getItem('jamc_history');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [showFloatingPlayer, setShowFloatingPlayer] = useState(true);
   const [volume, setVolume] = useState(0.8);
   const [isClient, setIsClient] = useState(false);
+  const [isAudioUnlocked, setIsAudioUnlocked] = useState(() => {
+    try {
+      return localStorage.getItem('audio_unlocked') === 'true';
+    } catch (_) { return false; }
+  });
 
   const activeVideoId = getYouTubeID(currentSong?.url);
   const lastSavedData = useRef<string>("");
   const isSavingRef = useRef(false);
+
+  const [isSafariOrIos, setIsSafariOrIos] = useState(false);
 
   // --- LATEST STATE REFS (Para mawala ang TypeScript errors) ---
   const currentSongRef = useRef<Song | null>(currentSong);
@@ -72,7 +86,33 @@ export default function App() {
   useEffect(() => { foldersRef.current = folders; }, [folders]);
   useEffect(() => { autoPlayRef.current = isAutoPlayNextEnabled; }, [isAutoPlayNextEnabled]);
 
-  
+  useEffect(() => {
+  if (currentSong) {
+    setPlayHistory(prev => {
+      // Pugngan ang duplicate kung ang kanta nga ga-play karon parehas sa pinaka-last sa history
+      if (prev.length > 0 && prev[0].song.id === currentSong.id) return prev;
+
+      const newLog = { 
+        id: Date.now().toString(), 
+        song: currentSong, 
+        playedAt: new Date().toISOString() 
+      };
+
+      // LIMIT: 50 items lang. Ang slice(0, 50) mokuha sa 50 pinaka-bag-o.
+      // Ang sobra sa 50 automatic nga "ma-delete" sa memory.
+      const updatedHistory = [newLog, ...prev].slice(0, 50);
+      
+      localStorage.setItem('jamc_history', JSON.stringify(updatedHistory));
+      return updatedHistory;
+    });
+  }
+}, [currentSong]);
+
+// Siguroha pud nga inig "Clear History", ma-update ang localStorage
+const handleClearHistory = () => {
+  setPlayHistory([]);
+  localStorage.removeItem('jamc_history');
+};
 
   // Sa sulod sa App component
 const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -137,17 +177,32 @@ useEffect(() => {
 
   // Kung mo-agi sa tanang filters sa ibabaw, diha pa nato i-save sa database
   const saveTimer = setTimeout(() => {
-    isSavingRef.current = true; 
+    isSavingRef.current = true;
+
+    // Don't attempt to sync an empty library payload — backend may reject it.
+    if (!folders || folders.length === 0) {
+      isSavingRef.current = false;
+      return;
+    }
+
+    console.debug('Sync payload:', folders);
     axiosInstance.post('playlists/sync', folders)
-      .then(() => { 
-        lastSavedData.current = currentDataString; 
-        isSavingRef.current = false; 
+      .then(() => {
+        lastSavedData.current = currentDataString;
+        isSavingRef.current = false;
       })
-      .catch((err) => { 
-        isSavingRef.current = false; 
-        // Kung naay error sa sync (sama sa cannot delete folder), i-fetch balik ang saktong data
-        console.error("Sync error:", err);
-        fetchDatabase(); 
+      .catch((err) => {
+        isSavingRef.current = false;
+        // Show richer debug info so we can see backend validation messages.
+        try {
+          console.error("Sync error:", err?.toJSON ? err.toJSON() : err);
+        } catch (_) {
+          console.error("Sync error (raw):", err);
+        }
+        console.error("Sync response data:", err?.response?.data);
+        Toast.fire({ icon: 'error', title: 'Sync failed' });
+        // If the backend rejects our payload (e.g. 400 validation), re-fetch authoritative data
+        fetchDatabase();
       });
   }, 2000); // Gidugangan nato ang delay gamay aron sure nga human na ang tanang local state updates
   
@@ -155,79 +210,73 @@ useEffect(() => {
 }, [folders, isDataLoaded, fetchDatabase]);
 
   const handleImportYT = async (yt: any) => {
-    let existingFolder = null;
-    const isDuplicateGlobally = folders.some(folder => {
-      const exists = folder.songs.some(s => s.url === yt.url);
-      if (exists) existingFolder = folder.name;
-      return exists;
-    });
+  let existingFolder = null;
+  const isDuplicateGlobally = folders.some(folder => {
+    const exists = folder.songs.some(s => s.url === yt.url);
+    if (exists) existingFolder = folder.name;
+    return exists;
+  });
 
-    if (isDuplicateGlobally) {
-        Swal.fire({ 
-          icon: 'info', 
-          title: 'Already in Library', 
-          html: `<b>"${yt.title}"</b> is already saved in the folder: <b>${existingFolder}</b>.<br><br>If you want to add this song to your current folder, please switch your search mode to <b>Local Library</b> and add it from there.` 
-        });
-        return; 
-    }
+  if (isDuplicateGlobally) {
+      Swal.fire({ 
+        icon: 'info', 
+        title: 'Already in Library', 
+        html: `<b>"${yt.title}"</b> is already saved in the folder: <b>${existingFolder}</b>.<br><br>If you want to add this song to your current folder, please switch your search mode to <b>Local Library</b> and add it from there.` 
+      });
+      return; 
+  }
 
-    const confirmImport = await Swal.fire({
-      title: 'Import Song?',
-      text: `Do you want to add "${yt.title}" to your library?`,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#4f46e5',
-      cancelButtonColor: '#a1a1aa',
-      confirmButtonText: 'Yes, import it!'
-    });
+  const confirmImport = await Swal.fire({
+    title: 'Import Song?',
+    text: `Do you want to add "${yt.title}" to your library?`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#4f46e5',
+    cancelButtonColor: '#a1a1aa',
+    confirmButtonText: 'Yes, import it!'
+  });
 
-    if (!confirmImport.isConfirmed) return;
+  if (!confirmImport.isConfirmed) return;
 
-    setImportingId(yt.videoId);
+  setImportingId(yt.videoId);
 
-    const newSong: Song = { 
-      id: Date.now().toString(), 
-      title: yt.title, 
-      artist: yt.author, 
-      url: yt.url, 
-      lyrics: "",
-      chords: "" 
-    };
-
-    setFolders((prev: PlaylistFolder[]) => {
-      if (activeFolderId) {
-        return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, newSong] } : f);
-      } else {
-        const defaultIndex = prev.findIndex(f => f.name === "Saved Library" || f.name === "Uncategorized");
-        if (defaultIndex !== -1) {
-          const updated = [...prev];
-          updated[defaultIndex].songs.push(newSong);
-          return updated;
-        } else {
-          return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
-        }
-      }
-    });
-    
-    setImportingId(null);
-    setYoutubeResults([]); 
-    setInputValue('');
-    
-    Toast.fire({ icon: 'success', title: 'Song imported successfully!' });
+  const newSong: Song = { 
+    id: Date.now().toString(), 
+    title: yt.title, 
+    artist: yt.author, 
+    url: yt.url, 
+    lyrics: "",
+    chords: "" 
   };
+
+  setFolders((prev: PlaylistFolder[]) => {
+    if (activeFolderId) {
+      return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, newSong] } : f);
+    } else {
+      const defaultIndex = prev.findIndex(f => f.name === "Saved Library" || f.name === "Uncategorized");
+      if (defaultIndex !== -1) {
+        const updated = [...prev];
+        updated[defaultIndex].songs.push(newSong);
+        return updated;
+      } else {
+        return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
+      }
+    }
+  });
+  
+  setImportingId(null);
+  
+  // --- KINI ANG MGA LUGAR NGA MO-CLEAR SA SEARCH BAR ---
+  setYoutubeResults([]); // Papason ang dropdown results
+  setInputValue('');     // Papason ang gi-type sa search bar
+  
+  Toast.fire({ icon: 'success', title: 'Song imported successfully!' });
+};
 
   const handleHeaderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const query = inputValue.trim();
     if (!query) return;
-
-    if (activeFolderId === null && location.pathname.includes('playlist')) {
-      const newFolder = { id: Date.now().toString(), name: query, songs: [] };
-      setFolders([...folders, newFolder as any]);
-      setInputValue('');
-      return;
-    }
-
     if (searchMode === 'local') return;
 
     const isUrl = query.startsWith('http');
@@ -286,52 +335,95 @@ useEffect(() => {
     setIsPlaying(playState);
     if (ytPlayer) {
       if (playState) {
-        ytPlayer.unMute(); 
-        ytPlayer.playVideo();
+        try {
+          if (isSafariOrIos) {
+            if (isAudioUnlocked) ytPlayer.unMute(); else ytPlayer.mute();
+          } else {
+            try { ytPlayer.unMute(); } catch (_) {}
+          }
+          ytPlayer.playVideo();
+        } catch (_) {}
       } else {
-        ytPlayer.pauseVideo();
+        try { ytPlayer.pauseVideo(); } catch (_) {}
       }
     }
   };
 
-  // --- SONG ENDED HANDLER (WITH AUTO-LOOP TO FIRST SONG) ---
-  const handleSongEnded = useCallback(() => {
-    // 1. Check kung naka-ON ang Auto-Play
-    if (!autoPlayRef.current) {
-      setIsPlaying(false);
-      return;
+  // --- SONG ENDED HANDLER (OPTIMIZED FOR IOS/SAFARI) ---
+const handleSongEnded = useCallback(() => {
+  // 1. Check kung naka-ON ang Auto-Play
+  if (!autoPlayRef.current) {
+    setIsPlaying(false);
+    return;
+  }
+
+  // 2. Pangitaon ang folder sa kanta karon gamit ang Refs
+  const currentFolder = foldersRef.current.find(f => 
+    f.songs.some(s => s.id === currentSongRef.current?.id)
+  );
+
+  if (!currentFolder || currentFolder.songs.length === 0) {
+    setIsPlaying(false);
+    return;
+  }
+
+  const playlist = currentFolder.songs;
+  const currentIndex = playlist.findIndex(s => s.id === currentSongRef.current?.id);
+
+  // 3. Loop Logic
+  const nextIndex = (currentIndex + 1) % playlist.length;
+  const nextSong = playlist[nextIndex];
+  const nextId = getYouTubeID(nextSong.url);
+
+  if (!nextId) {
+    setIsPlaying(false);
+    return;
+  }
+
+  // 4. IMPORTANT FOR iOS: Update React State una
+  setCurrentSong(nextSong);
+  // On iOS/Safari, do not auto-play unless user already unlocked audio
+  if (isSafariOrIos && !isAudioUnlocked) setIsPlaying(false);
+  else setIsPlaying(true);
+
+  // 5. iOS/Safari MediaSession Sync
+  // Kinahanglan i-update ang Lock Screen diritso aron dili hunongon sa Safari ang kanta
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: nextSong.title,
+      artist: nextSong.artist || 'Unknown Artist',
+      artwork: [{ src: `https://i.ytimg.com/vi/${nextId}/mqdefault.jpg`, sizes: '320x180', type: 'image/jpeg' }]
+    });
+  }
+
+  // 6. iOS SIKRETO: loadVideoById diritso sa existing player object
+  // Ayaw paghulat sa React re-render. Kinahanglan diritso ang command sa iframe.
+  if (ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
+    try {
+      ytPlayer.loadVideoById({
+        videoId: nextId,
+        startSeconds: 0,
+      });
+      // Sa pipila ka version sa Safari, kailangan unmuting gesture context
+      try {
+        // Only start playback automatically when allowed
+        if (!(isSafariOrIos && !isAudioUnlocked)) {
+          if (isSafariOrIos) {
+            if (isAudioUnlocked) { ytPlayer.unMute(); }
+          } else {
+            try { ytPlayer.unMute(); } catch (_) {}
+          }
+          try { ytPlayer.playVideo(); } catch (_) {}
+        } else {
+          // Keep iframe loaded but paused/muted for iOS until user taps play
+          try { ytPlayer.mute(); } catch (_) {}
+        }
+      } catch (_) {}
+    } catch (err) {
+      console.error("iOS Autoplay Error:", err);
     }
-
-    // 2. Pangitaon ang folder sa kanta karon gamit ang Refs (para dili ma-stale sa iOS)
-    const currentFolder = foldersRef.current.find(f => 
-      f.songs.some(s => s.id === currentSongRef.current?.id)
-    );
-
-    if (!currentFolder || currentFolder.songs.length === 0) {
-      setIsPlaying(false);
-      return;
-    }
-
-    const playlist = currentFolder.songs;
-    const currentIndex = playlist.findIndex(s => s.id === currentSongRef.current?.id);
-
-    // 3. KINI ANG LOOP LOGIC:
-    // (currentIndex + 1) % playlist.length
-    // Pananglitan: Kung naa sa song index 4 out of 5 songs -> (4 + 1) % 5 = 0 (Balik sa una!)
-    const nextIndex = (currentIndex + 1) % playlist.length;
-    const nextSong = playlist[nextIndex];
-
-    // 4. I-update ang state para mo-trigger ang player sync
-    setCurrentSong(nextSong);
-    setIsPlaying(true);
-
-    // 5. Para sa iOS stability: load diritso ang video id
-    const nextId = getYouTubeID(nextSong.url);
-    if (ytPlayer && nextId) {
-      ytPlayer.loadVideoById(nextId);
-      ytPlayer.playVideo();
-    }
-  }, [ytPlayer]); // Dependency is only ytPlayer kay Ref na ang uban
+  }
+}, [ytPlayer]); // Ang ytPlayer ra ang dependency
 
   useEffect(() => {
     if (searchMode !== 'youtube' || inputValue.trim().length < 2) {
@@ -348,7 +440,7 @@ useEffect(() => {
       try {
         const ytSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
         const res = await axios.get(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ytSearchUrl)}`)
-          .catch(() => axios.get(`https://corsproxy.io/?${encodeURIComponent(ytSearchUrl)}`));
+          .catch(() => axios.get(`https://api.allorigins.win/raw?url=${encodeURIComponent(ytSearchUrl)}`));
         
         if (isCancelled) return; 
 
@@ -395,7 +487,145 @@ useEffect(() => {
   }, [inputValue, searchMode]);
 
   useEffect(() => { setIsClient(true); }, []);
+
+  // Detect iOS or Safari (run on client only)
+  useEffect(() => {
+    if (!isClient) return;
+    try {
+      const ua = navigator.userAgent || '';
+      const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+      const isSafari = /^((?!chrome|android).)*safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+      setIsSafariOrIos(Boolean(isIOS || isSafari));
+    } catch (_) {
+      setIsSafariOrIos(false);
+    }
+  }, [isClient]);
+
+  // If user previously unlocked audio, keep that state
+  useEffect(() => {
+    try { localStorage.setItem('audio_unlocked', JSON.stringify(isAudioUnlocked)); } catch (_) {}
+  }, [isAudioUnlocked]);
+
+  const unlockAudio = async () => {
+    let unlocked = false;
+    try {
+      const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (AC) {
+        const ctx = new AC();
+        try {
+          // create a 1-frame silent buffer and play it to unlock audio on iOS
+          const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+          const src = ctx.createBufferSource();
+          src.buffer = buffer;
+          src.connect(ctx.destination);
+          src.start(0);
+          await ctx.resume();
+          try { src.stop(); } catch (_) {}
+          try { ctx.close?.(); } catch (_) {}
+          unlocked = true;
+        } catch (_) {
+          try { await ctx.resume(); unlocked = true; } catch (_) { unlocked = false; }
+        }
+      }
+    } catch (_) { unlocked = false; }
+
+    // HTMLAudio fallback: generate tiny silent WAV and play it
+    if (!unlocked) {
+      try {
+        const makeSilentWavBlob = (duration = 0.05) => {
+          const sampleRate = 22050;
+          const samples = Math.max(1, Math.floor(sampleRate * duration));
+          const buffer = new ArrayBuffer(44 + samples * 2);
+          const view = new DataView(buffer);
+          const writeString = (dv: DataView, offset: number, str: string) => {
+            for (let i = 0; i < str.length; i++) dv.setUint8(offset + i, str.charCodeAt(i));
+          };
+          writeString(view, 0, 'RIFF');
+          view.setUint32(4, 36 + samples * 2, true);
+          writeString(view, 8, 'WAVE');
+          writeString(view, 12, 'fmt ');
+          view.setUint32(16, 16, true);
+          view.setUint16(20, 1, true);
+          view.setUint16(22, 1, true);
+          view.setUint32(24, sampleRate, true);
+          view.setUint32(28, sampleRate * 2, true);
+          view.setUint16(32, 2, true);
+          view.setUint16(34, 16, true);
+          writeString(view, 36, 'data');
+          view.setUint32(40, samples * 2, true);
+          // samples are already zeroed (silence)
+          return new Blob([view], { type: 'audio/wav' });
+        };
+
+        const blob = makeSilentWavBlob(0.05);
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio();
+        audio.src = url;
+        audio.muted = true;
+        // try to play and await promise
+        try {
+          await audio.play();
+          unlocked = true;
+        } catch (_) {
+          unlocked = false;
+        }
+        try { audio.pause(); } catch (_) {}
+        URL.revokeObjectURL(url);
+      } catch (_) { /* ignore */ }
+    }
+
+    if (ytPlayer) {
+      try {
+        if (unlocked) {
+          ytPlayer.unMute?.();
+        }
+        // ensure playback after unlocking
+        ytPlayer.playVideo?.();
+      } catch (_) {}
+    }
+
+    if (unlocked) setIsAudioUnlocked(true);
+  };
+
+  // Ensure manual song changes (click Next/Select) update the existing iframe/player
+  useEffect(() => {
+    if (!currentSong || !ytPlayer) return;
+    try {
+      const id = getYouTubeID(currentSong.url);
+      if (!id) return;
+
+      if (typeof ytPlayer.loadVideoById === 'function') {
+        ytPlayer.loadVideoById({ videoId: id, startSeconds: 0 });
+      }
+
+      // Sync mute/unmute behavior for iOS/Safari
+      try {
+        if (isSafariOrIos) {
+          if (isAudioUnlocked) { try { ytPlayer.unMute(); } catch (_) {} }
+          else { try { ytPlayer.mute(); } catch (_) {} }
+        } else {
+          try { ytPlayer.unMute(); } catch (_) {}
+        }
+      } catch (_) {}
+
+      try { ytPlayer.playVideo(); } catch (_) {}
+      setIsPlaying(true);
+    } catch (err) {
+      console.error('Error loading currentSong into ytPlayer:', err);
+    }
+  }, [currentSong, ytPlayer, isAudioUnlocked, isSafariOrIos]);
   useEffect(() => { if (ytPlayer) { try { ytPlayer.setVolume(Math.round(volume * 100)); } catch (e) {} } }, [volume, ytPlayer]);
+
+  // Handler for selecting/advancing to a song from Footer or UI
+  const handleSelectSong = (song: Song) => {
+    setCurrentSong(song);
+    setShowFloatingPlayer(true);
+    if (isSafariOrIos && !isAudioUnlocked) {
+      setIsPlaying(false);
+    } else {
+      setIsPlaying(true);
+    }
+  };
 
   const currentActiveMenu = location.pathname.includes('playlist') ? 'folders' : location.pathname.includes('saved') ? 'saved' : 'home';
 
@@ -479,25 +709,28 @@ useEffect(() => {
         <main className="flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-950/50 relative">
           <div className="mx-auto p-4 md:p-8 pb-32">
             <Outlet 
-              context={{ 
-                folders, 
-                setFolders, 
-                activeFolderId, 
-                setActiveFolderId, 
-                currentSong, 
-                setCurrentSong, 
-                setIsPlaying: handleTogglePlay, 
-                isPlaying, 
-                isAutoPlayNextEnabled, 
-                setIsAutoPlayNextEnabled, 
-                inputValue, 
-                setInputValue, 
-                searchMode, 
-                playHistory, 
-                setPlayHistory,
-                 ytPlayer,
-              }} 
-            />
+  context={{ 
+    folders, 
+    setFolders, 
+    activeFolderId, 
+    setActiveFolderId, 
+    activeFolder, // <-- Gidugang nako ni para dili na mag-find() ang Playlist.tsx
+    currentSong, 
+    setCurrentSong, 
+    setIsPlaying: handleTogglePlay, 
+    isPlaying, 
+    isAutoPlayNextEnabled, 
+    setIsAutoPlayNextEnabled, 
+    inputValue, 
+    setInputValue, 
+    searchMode, 
+    setSearchMode, // <-- Siguroha nga naapil ni para ma-control ang search mode sa children
+    playHistory, 
+    setPlayHistory,
+    ytPlayer,
+    handleClearHistory,
+  }} 
+/>
           </div>
         </main>
 
@@ -536,35 +769,51 @@ useEffect(() => {
 
                 <div className="no-drag aspect-video relative bg-black pt-8">
                   <YouTube
-  videoId={activeVideoId || undefined}
-  opts={{ 
-    width: '100%', 
-    height: '100%', 
-    host: 'https://www.youtube-nocookie.com',
-    playerVars: { 
-      autoplay: 1, 
-      mute: 0,     
-      playsinline: 1, 
-      controls: 1, 
-      rel: 0, 
-      origin: window.location.origin,
-      enablejsapi: 1,
-    } 
-  }}
-  onReady={(e) => { 
-    setYtPlayer(e.target); 
-    if (isPlaying) {
-      e.target.unMute(); 
-      e.target.playVideo(); 
-    }
-  }}
-  onStateChange={(e) => {
-    if (e.data === 1) setIsPlaying(true); 
-    if (e.data === 2) setIsPlaying(false); 
-    if (e.data === 0) handleSongEnded();   
-  }}
-  className="absolute inset-0 w-full h-full"
-/>
+                    videoId={activeVideoId || undefined}
+                    opts={{
+                      width: '100%',
+                      height: '100%',
+                      host: 'https://www.youtube-nocookie.com',
+                      playerVars: {
+                        autoplay: 1,
+                        mute: isSafariOrIos ? 1 : 0,
+                        playsinline: 1,
+                        controls: 1,
+                        rel: 0,
+                        origin: window.location.origin,
+                        enablejsapi: 1,
+                      }
+                    }}
+                    onReady={(e) => {
+                      const target = e.target;
+                      try {
+                        const iframe = typeof target.getIframe === 'function' ? target.getIframe() : null;
+                        if (iframe) {
+                          iframe.setAttribute('playsinline','1');
+                          iframe.setAttribute('webkit-playsinline','1');
+                          iframe.setAttribute('allow','autoplay; encrypted-media; picture-in-picture');
+                        }
+                      } catch (err) {}
+
+                      setYtPlayer(target);
+                      try {
+                        if (isPlaying) {
+                          if (isSafariOrIos) {
+                            if (isAudioUnlocked) { target.unMute(); target.playVideo(); }
+                            else { target.mute(); target.playVideo(); }
+                          } else {
+                            try { target.unMute(); target.playVideo(); } catch (_) {}
+                          }
+                        }
+                      } catch (err) {}
+                    }}
+                    onStateChange={(e) => {
+                      if (e.data === 1) setIsPlaying(true);
+                      if (e.data === 2) setIsPlaying(false);
+                      if (e.data === 0) handleSongEnded();
+                    }}
+                    className="absolute inset-0 w-full h-full"
+                  />
                 </div>
               </div>
             </div>
@@ -586,7 +835,12 @@ useEffect(() => {
           <button onClick={() => setShowFloatingPlayer(true)} className="fixed bottom-44 right-8 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl animate-bounce"><Play className="w-6 h-6 fill-current" /></button>
         )}
 
-        <Footer currentSong={currentSong} isPlaying={isPlaying} setIsPlaying={handleTogglePlay} ytPlayer={ytPlayer} playlistSongs={currentSong ? folders.find(f => f.songs.some(s => s.id === currentSong.id))?.songs || [] : []} onSongChange={(song) => { setCurrentSong(song); setIsPlaying(true); setShowFloatingPlayer(true); }} volume={volume} setVolume={setVolume} />
+        {/* Enable audio button for iOS/Safari to unlock autoplay/unmute */}
+        {isClient && isSafariOrIos && currentSong && !isAudioUnlocked && (
+          <button onClick={unlockAudio} className="fixed bottom-36 right-8 z-70 bg-indigo-600 text-white p-3 rounded-full shadow-2xl">Enable audio</button>
+        )}
+
+        <Footer currentSong={currentSong} isPlaying={isPlaying} setIsPlaying={handleTogglePlay} ytPlayer={ytPlayer} playlistSongs={currentSong ? folders.find(f => f.songs.some(s => s.id === currentSong.id))?.songs || [] : []} onSongChange={handleSelectSong} volume={volume} setVolume={setVolume} isSafariOrIos={isSafariOrIos} isAudioUnlocked={isAudioUnlocked} unlockAudio={unlockAudio} />
       </div>
     </div>
   );

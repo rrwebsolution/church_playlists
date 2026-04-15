@@ -4,11 +4,16 @@ import './index.css'
 import App from './App.tsx';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import Loader from './components/ui/loader/Loader.tsx';
+
 // Lazy loaded views
 const Playlist = lazy(() => import('./views/playlist/Playlist.tsx'));
-const Saved = lazy(() => import('./views/saved/Saved.tsx')); // Create this file
-const History = lazy(() => import('./views/history/History.tsx')); // Create this file
-const Settings = lazy(() => import('./views/settings/Settings.tsx')); // Create this file
+const Saved = lazy(() => import('./views/saved/Saved.tsx')); 
+const History = lazy(() => import('./views/history/History.tsx')); 
+const Settings = lazy(() => import('./views/settings/Settings.tsx')); 
+
+// EasyWorship Components
+const EasyWorshipController = lazy(() => import('./views/live-input/EasyWorshipController.tsx'));
+const EasyWorshipView = lazy(() => import('./views/projector/EasyWorshipView.tsx'));
 
 const routes = [
   {
@@ -17,7 +22,7 @@ const routes = [
   },
   {
     path: '/app',
-    element: <App />, // This acts as the Layout
+    element: <App />, // Layout with Sidebar
     children: [
       {
         path: 'playlist',
@@ -58,12 +63,32 @@ const routes = [
             <Settings />
           </Suspense>
         )
-      }
+      },
+      {
+        path: 'easyworship', // Ang Controller (naay sidebar)
+        element: (
+          <Suspense fallback={<Loader />}>
+            <EasyWorshipController />
+          </Suspense>
+        )
+      },
     ]
   },
+  
+  // --- EXTERNAL OUTPUT (Gawas sa /app para PURE BLACK SCREEN ra jud ni) ---
+  {
+    path: '/projector',
+    element: (
+      <Suspense fallback={<Loader />}>
+        <EasyWorshipView />
+      </Suspense>
+    )
+  },
+
+  // --- 404 CATCH ALL ---
   {
     path: '*',
-    element: <div className="text-white p-10">404 - Page Not Found</div>,
+    element: <div className="text-white p-10 h-screen bg-zinc-950 flex items-center justify-center">404 - Page Not Found</div>,
   },
 ];
 
@@ -71,7 +96,6 @@ const router = createBrowserRouter(routes);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {/* Fixed: Only one RouterProvider is needed */}
     <RouterProvider router={router} />
   </StrictMode>,
 )

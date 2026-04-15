@@ -36,6 +36,8 @@ const getYouTubeID = (url: string | undefined | null) => {
 
 export default function App() {
   const location = useLocation();
+
+  const isEasyWorshipPage = location.pathname.includes('/app/easyworship');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<'youtube' | 'link' | 'local'>('youtube');
   const [inputValue, setInputValue] = useState('');
@@ -387,6 +389,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden relative">
       <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} />
+      
       <div className="flex-1 flex flex-col min-w-0 relative">
         <Header 
           activeMenu={currentActiveMenu} 
@@ -397,8 +400,9 @@ export default function App() {
           onImportYT={handleImportYT} importingId={importingId}
         />
         
-        <main className="flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-950/50 relative">
-          <div className="mx-auto p-4 md:p-8 pb-32">
+        {/* GI-ADJUST ANG PADDING: Kung EasyWorship, wala nay pb-32 para dili dako og space sa ubos */}
+        <main className={`flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-950/50 relative ${isEasyWorshipPage ? 'pb-8' : 'pb-32'}`}>
+          <div className="mx-auto p-4 md:p-8">
             <Outlet 
               context={{ 
                 folders, setFolders, activeFolderId, setActiveFolderId, activeFolder, 
@@ -410,8 +414,8 @@ export default function App() {
           </div>
         </main>
 
-        {/* DRAGGABLE FLOATING PLAYER */}
-        {isClient && currentSong && (
+        {/* DRAGGABLE FLOATING PLAYER - MOGAWAS RA KUNG DILI EASYWORSHIP PAGE */}
+        {!isEasyWorshipPage && isClient && currentSong && (
           <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".no-drag" bounds="parent" disabled={!isMobile}>
             <div ref={nodeRef} className={`fixed bottom-28 right-4 md:bottom-32 md:right-8 z-60 w-[70vw] max-w-[16rem] md:w-80 transition-opacity duration-500 ${showFloatingPlayer ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
               <div className="bg-zinc-900 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border border-white/10 group relative">
@@ -424,7 +428,6 @@ export default function App() {
                 </div>
 
                 <div className="no-drag aspect-video relative bg-black pt-8">
-                  {/* 🔥 KINI ANG VANILLA JS DOM TARGET 🔥 */}
                   <div id="vanilla-yt-player" className="absolute inset-0 w-full h-full pointer-events-none sm:pointer-events-auto"></div>
                 </div>
               </div>
@@ -432,16 +435,20 @@ export default function App() {
           </Draggable>
         )}
 
-        {currentSong && !showFloatingPlayer && (
+        {/* TV ICON BUTTON - MOGAWAS RA KUNG DILI EASYWORSHIP PAGE */}
+        {!isEasyWorshipPage && currentSong && !showFloatingPlayer && (
           <button onClick={() => setShowFloatingPlayer(true)} className="fixed bottom-44 right-8 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl animate-bounce hover:scale-110 active:scale-95 transition-all" title="Show Video Player"><Tv className="w-6 h-6" /></button>
         )}
 
-        <Footer 
-          currentSong={currentSong} isPlaying={isPlaying} setIsPlaying={handleTogglePlay} ytPlayer={ytPlayer} 
-          playlistSongs={currentSong ? folders.find(f => f.songs.some(s => s.id === currentSong.id))?.songs || [] : []} 
-          onSongChange={handleSelectSong} 
-          volume={volume} setVolume={setVolume} 
-        />
+        {/* FOOTER - MOGAWAS RA KUNG DILI EASYWORSHIP PAGE */}
+        {!isEasyWorshipPage && (
+          <Footer 
+            currentSong={currentSong} isPlaying={isPlaying} setIsPlaying={handleTogglePlay} ytPlayer={ytPlayer} 
+            playlistSongs={currentSong ? folders.find(f => f.songs.some(s => s.id === currentSong.id))?.songs || [] : []} 
+            onSongChange={handleSelectSong} 
+            volume={volume} setVolume={setVolume} 
+          />
+        )}
       </div>
     </div>
   );

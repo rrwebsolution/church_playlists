@@ -1,6 +1,6 @@
 import { 
   X, Folder, Bookmark, History, Settings, 
-  ChevronLeft, ChevronRight 
+  ChevronLeft, ChevronRight, Presentation
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -26,6 +26,8 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
     { id: 'playlist', path: '/app/playlist', label: 'My Playlists', icon: Folder },
     { id: 'saved', path: '/app/saved', label: 'Saved Songs', icon: Bookmark },
     { id: 'history', path: '/app/history', label: 'History', icon: History },
+    // --- GINGANLAN NA OG EASYWORSHIP ---
+    { id: 'easyworship', path: '/app/easyworship', label: 'EasyWorship', icon: Presentation },
     { id: 'settings', path: '/app/settings', label: 'Settings', icon: Settings },
   ];
 
@@ -35,7 +37,6 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
       ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
       w-64 ${isCollapsed ? 'md:w-20' : 'md:w-64'}`}
     >
-      {/* DESKTOP COLLAPSE BUTTON */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-full items-center justify-center text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:scale-110 shadow-md transition-all z-50"
@@ -43,7 +44,6 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
         {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
-      {/* HEADER AREA */}
       <div className={`h-16 flex items-center ${isCollapsed ? 'md:justify-center px-6 md:px-0' : 'justify-between px-6'} border-b border-zinc-200 dark:border-zinc-800 text-indigo-600 dark:text-indigo-400 font-semibold text-sm uppercase tracking-widest shrink-0 overflow-hidden`}>
         <div className="flex items-center">
           <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'block'}`}>
@@ -56,7 +56,6 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
         </button>
       </div>
 
-      {/* NAVIGATION LINKS */}
       <nav className={`flex-1 p-3 md:p-4 space-y-2 overflow-y-auto custom-scrollbar ${isCollapsed ? 'overflow-x-visible' : 'overflow-x-hidden'}`}>
         {menuItems.map((item) => {
           const isActive = location.pathname.startsWith(item.path);
@@ -76,10 +75,8 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
                 </span>
               </button>
 
-              {/* CUSTOM TOOLTIP (Only shows when collapsed) */}
               {isCollapsed && (
                 <div className="fixed left-full ml-4 px-3 py-2 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-100 shadow-xl border border-zinc-700/50 pointer-events-none">
-                  {/* Tooltip Arrow */}
                   <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-zinc-900 dark:border-r-zinc-800"></div>
                   {item.label}
                 </div>
@@ -89,7 +86,6 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
         })}
       </nav>
 
-      {/* FOOTER */}
       <div className={`p-4 border-t border-zinc-200 dark:border-zinc-800 text-[9px] text-zinc-400 dark:text-zinc-600 text-center font-medium tracking-widest overflow-hidden whitespace-nowrap transition-all duration-300`}>
         {isCollapsed ? 'V1.0' : 'JAMC TAGOLOAN CHURCH SYSTEM V1.0'}
       </div>

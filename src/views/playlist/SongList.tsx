@@ -82,8 +82,6 @@ const extractUGJson = (html: string) => {
 // --- MULTI-LAYER LYRICS ENGINE ---
 const fetchLyricsSmart = async (artist: string, title: string) => {
   const query = encodeURIComponent(`${artist} ${title}`);
-  // const qArtist = encodeURIComponent(artist);
-  // const qTitle = encodeURIComponent(title);
 
   try {
     const searchUrl = `https://christianlyricsonline.net/?s=${query}`;
@@ -167,7 +165,7 @@ const fetchChordsSmart = async (artist: string, title: string) => {
   return "";
 };
 
-// --- HELPER PARA SA PLAIN TEXT LYRICS (Para sa Print/Download) ---
+// --- HELPER PARA SA PLAIN TEXT LYRICS ---
 const getCleanLyricsText = (lyrics: string) => {
   if (!lyrics) return "";
   const rawLines = lyrics.replace(/&#039;/g, "'").split(/\r?\n/);
@@ -211,7 +209,7 @@ const getCleanLyricsText = (lyrics: string) => {
   return result.join('\n').trim();
 };
 
-// --- SMART LYRICS FORMATTER (Removes Headers with no lyrics) ---
+// --- SMART LYRICS FORMATTER ---
 const formatLyrics = (lyrics: string) => {
   if (!lyrics) return null;
 
@@ -286,14 +284,12 @@ const stripChordsForEdit = (text: string) => {
 
   return lines.filter(line => {
     const trimmed = line.trim();
-    if (trimmed === "") return true; // Keep empty lines for spacing
+    if (trimmed === "") return true; 
     
-    // Ayaw i-delete ang Headers ([Intro], etc.)
     if (/^\[(.*?)\]$/.test(trimmed) || /^(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Hook|Refrain|Interlude|Tag|Ending|Instrumental|Solo)[\s\d]*:?$/i.test(trimmed)) {
       return true;
     }
 
-    // Check kung ang linya kay puro chords
     const words = trimmed.split(/\s+/);
     let chordCount = 0;
     words.forEach(word => {
@@ -301,7 +297,6 @@ const stripChordsForEdit = (text: string) => {
       if (chordRegex.test(cleanWord) || ["|", "-", "/", "!", "x"].includes(cleanWord)) chordCount++;
     });
 
-    // Kung ang linya DILI puro chords, i-keep (Lyrics ni)
     return !(chordCount > 0 && (chordCount / words.length > 0.4));
   }).join('\n').trim();
 };
@@ -368,25 +363,23 @@ export default function SongList(props: any) {
   };
 
   const handleAddToFolder = (song: Song) => {
-  const currentFolder = folders.find((f: PlaylistFolder) => f.id === activeFolderId);
-  
-  if (currentFolder && currentFolder.songs.some((s:any) => s.url === song.url)) {
-      Swal.fire({ icon: 'error', title: 'Duplicate Song', text: 'This song is already in this folder!' });
-      return;
-  }
-
-  setFolders((prev: PlaylistFolder[]) => prev.map(f => {
-    if (f.id === activeFolderId) {
-      return { ...f, songs: [...f.songs, { ...song, id: Date.now().toString() + Math.random() }] };
+    const currentFolder = folders.find((f: PlaylistFolder) => f.id === activeFolderId);
+    
+    if (currentFolder && currentFolder.songs.some((s:any) => s.url === song.url)) {
+        Swal.fire({ icon: 'error', title: 'Duplicate Song', text: 'This song is already in this folder!' });
+        return;
     }
-    return f;
-  }));
 
-  // --- KINI ANG IMONG GIKAHANGLAN NGA LINYA ---
-  setInputValue(''); // Mo-clear ni sa search bar human nimo ma-add ang kanta
-  
-  Toast.fire({ icon: 'success', title: 'Added to folder!' });
-};
+    setFolders((prev: PlaylistFolder[]) => prev.map(f => {
+      if (f.id === activeFolderId) {
+        return { ...f, songs: [...f.songs, { ...song, id: Date.now().toString() + Math.random() }] };
+      }
+      return f;
+    }));
+
+    setInputValue(''); 
+    Toast.fire({ icon: 'success', title: 'Added to folder!' });
+  };
 
   const handleRemoveSong = async (song: Song) => {
     const result = await Swal.fire({
@@ -436,65 +429,61 @@ export default function SongList(props: any) {
     Toast.fire({ icon: 'success', title: 'Title updated!' });
   };
 
-  // --- DOWNLOAD & PRINT ACTIONS ---
   const handleDownloadTxt = (song: Song) => {
-  // KINI ANG SPECIFIC UPDATE:
-  const content = activeTab === 'lyrics' 
-    ? getCleanLyricsText(song.lyrics || "") 
-    : song.chords;
+    const content = activeTab === 'lyrics' 
+      ? getCleanLyricsText(song.lyrics || "") 
+      : song.chords;
 
-  if (!content) return;
-  const element = document.createElement("a");
-  const file = new Blob([content], {type: 'text/plain'});
-  element.href = URL.createObjectURL(file);
-  element.download = `${song.title} - ${activeTab.toUpperCase()}.txt`;
-  document.body.appendChild(element);
-  element.click();
-  document.body.removeChild(element);
-};
+    if (!content) return;
+    const element = document.createElement("a");
+    const file = new Blob([content], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = `${song.title} - ${activeTab.toUpperCase()}.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
 
   const handlePrint = (song: Song) => {
-  // KINI ANG SPECIFIC UPDATE:
-  const content = activeTab === 'lyrics' 
-    ? getCleanLyricsText(song.lyrics || "") 
-    : song.chords;
+    const content = activeTab === 'lyrics' 
+      ? getCleanLyricsText(song.lyrics || "") 
+      : song.chords;
 
-  if (!content) return;
-  
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return;
-  
-  // I-format ang headers para naay design sa print
-  const formattedContent = activeTab === 'lyrics' 
-    ? content.replace(/\n/g, '<br>').replace(/\[(.*?)\]/g, '<div class="badge">$1</div>')
-    : `<pre style="font-family: monospace; font-size: 14px; white-space: pre-wrap;">${content}</pre>`;
+    if (!content) return;
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    
+    const formattedContent = activeTab === 'lyrics' 
+      ? content.replace(/\n/g, '<br>').replace(/\[(.*?)\]/g, '<div class="badge">$1</div>')
+      : `<pre style="font-family: monospace; font-size: 14px; white-space: pre-wrap;">${content}</pre>`;
 
-  printWindow.document.write(`
-    <html>
-      <head>
-        <title>${song.title}</title>
-        <style>
-          body { font-family: sans-serif; padding: 40px; text-align: center; color: #18181b; }
-          h1 { margin-bottom: 5px; font-size: 24px; }
-          h2 { margin-top: 0; font-size: 14px; color: #71717a; text-transform: uppercase; margin-bottom: 30px; }
-          .badge { 
-            display: inline-block; padding: 4px 12px; background: #f4f4f5; 
-            border: 1px solid #e4e4e7; border-radius: 6px; font-weight: bold; 
-            font-size: 11px; margin: 20px 0 10px 0; text-transform: uppercase;
-          }
-          .lyrics-line { margin-bottom: 4px; font-size: 16px; font-weight: 500; }
-        </style>
-      </head>
-      <body>
-        <h1>${song.title}</h1>
-        <h2>${song.artist || 'Unknown Artist'}</h2>
-        <div>${formattedContent}</div>
-        <script>window.onload = function() { window.print(); window.close(); }</script>
-      </body>
-    </html>
-  `);
-  printWindow.document.close();
-};
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${song.title}</title>
+          <style>
+            body { font-family: sans-serif; padding: 40px; text-align: center; color: #18181b; }
+            h1 { margin-bottom: 5px; font-size: 24px; }
+            h2 { margin-top: 0; font-size: 14px; color: #71717a; text-transform: uppercase; margin-bottom: 30px; }
+            .badge { 
+              display: inline-block; padding: 4px 12px; background: #f4f4f5; 
+              border: 1px solid #e4e4e7; border-radius: 6px; font-weight: bold; 
+              font-size: 11px; margin: 20px 0 10px 0; text-transform: uppercase;
+            }
+            .lyrics-line { margin-bottom: 4px; font-size: 16px; font-weight: 500; }
+          </style>
+        </head>
+        <body>
+          <h1>${song.title}</h1>
+          <h2>${song.artist || 'Unknown Artist'}</h2>
+          <div>${formattedContent}</div>
+          <script>window.onload = function() { window.print(); window.close(); }</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
 
   const handleManualFetch = async (song: Song) => {
     const { cleanArtist, cleanTitle } = cleanUpSongData(song.artist || "", song.title);
@@ -565,18 +554,17 @@ export default function SongList(props: any) {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 px-2">
         <div className="flex items-center gap-4 min-w-0">
-          {/* ILISI KINING BUTTONA SA IMONG SONGLIST.TSX */}
-<button 
-  onClick={() => { 
-    setActiveFolderId(null); 
-    setYoutubeResults?.([]); 
-    setInputValue?.(''); 
-    navigate('/app/playlist'); // <--- KINI ANG MO-FIX SA BUG
-  }} 
-  className="p-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shadow-sm transition-all active:scale-90 group"
->
-  <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-</button>
+          <button 
+            onClick={() => { 
+              setActiveFolderId(null); 
+              setYoutubeResults?.([]); 
+              setInputValue?.(''); 
+              navigate('/app/playlist'); 
+            }} 
+            className="p-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400 shadow-sm transition-all active:scale-90 group"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+          </button>
           <div className="min-w-0">
             <h1 className="text-2xl md:text-3xl font-bold truncate tracking-tight text-zinc-900 dark:text-zinc-100 uppercase">{activeFolder?.name}</h1>
             <div className="flex items-center gap-2 mt-1">
@@ -637,7 +625,7 @@ export default function SongList(props: any) {
                             className={`group overflow-hidden transition-all duration-300 rounded-[1.5rem] bg-white dark:bg-zinc-900/80 backdrop-blur-xl border
                             ${snapshot.isDragging ? 'shadow-2xl border-indigo-500 scale-[1.02] z-50' : isExpanded ? 'border-indigo-500/50 shadow-xl shadow-indigo-500/10' : 'border-zinc-200/50 dark:border-white/5 shadow-sm hover:border-indigo-400/50 dark:hover:border-indigo-500/30'}`}>
                             
-                            {/* CARD HEADER (Always Visible) */}
+                            {/* CARD HEADER */}
                             <div className="flex items-center justify-between p-4 md:p-5 relative bg-white dark:bg-transparent rounded-t-[1.5rem]">
                               
                               {isFetchingData && (
@@ -649,14 +637,47 @@ export default function SongList(props: any) {
                               <div className="flex items-center gap-4 min-w-0 flex-1">
                                 {!isLocalSearch && <div {...provided.dragHandleProps} className="hidden sm:flex text-zinc-300 hover:text-zinc-500 cursor-grab active:cursor-grabbing px-1"><GripVertical className="w-5 h-5" /></div>}
                                 <div className="flex items-center gap-4 min-w-0 group/info flex-1">
+                                  
+                                  {/* THUMBNAIL AREA */}
                                   <div onClick={(e) => handlePlaySong(e, song)} className="relative shrink-0 cursor-pointer">
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${isCurrentlyPlaying ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 group-hover/info:bg-indigo-50 dark:group-hover/info:bg-indigo-500/10 group-hover/info:text-indigo-600'}`}>
-                                      {isCurrentlyPlaying ? (isPlaying ? <PlayingVisualizer /> : <Play className="w-5 h-5 fill-current ml-0.5" />) : <Play className="w-5 h-5 fill-current ml-0.5" />}
+                                    <div className={`w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center transition-all ${
+                                      isCurrentlyPlaying 
+                                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' 
+                                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
+                                    }`}>
+                                      {song.thumbnail ? (
+                                        <img 
+                                          src={song.thumbnail} 
+                                          alt={song.title} 
+                                          className={`w-full h-full object-cover transition-opacity duration-300 ${isCurrentlyPlaying ? 'opacity-40' : 'opacity-100'}`} 
+                                        />
+                                      ) : (
+                                        isCurrentlyPlaying ? (
+                                          isPlaying ? <PlayingVisualizer /> : <Play className="w-5 h-5 fill-current ml-0.5" />
+                                        ) : (
+                                          <Play className="w-5 h-5 fill-current ml-0.5" />
+                                        )
+                                      )}
                                     </div>
-                                    <div className={`absolute inset-0 rounded-xl flex items-center justify-center transition-all duration-300 transform ${isCurrentlyPlaying ? 'opacity-100 scale-100 bg-indigo-600/80' : 'opacity-0 scale-75 group-hover/info:opacity-100 group-hover/info:scale-100 bg-zinc-900/40 dark:bg-black/50 backdrop-blur-sm'}`}>
-                                      {isCurrentlyPlaying && isPlaying ? <PauseCircle className="w-6 h-6 text-white" /> : <PlayCircle className="w-6 h-6 text-white" />}
+
+                                    {/* OVERLAY */}
+                                    <div className={`absolute inset-0 rounded-xl flex items-center justify-center transition-all duration-300 transform ${
+                                      isCurrentlyPlaying 
+                                        ? 'opacity-100 scale-100 bg-indigo-600/60' 
+                                        : 'opacity-0 scale-75 group-hover/info:opacity-100 group-hover/info:scale-100 bg-zinc-900/40 dark:bg-black/50 backdrop-blur-[2px]'
+                                    }`}>
+                                      {isCurrentlyPlaying && isPlaying ? (
+                                        <PauseCircle className="w-6 h-6 text-white" />
+                                      ) : (
+                                        <PlayCircle className="w-6 h-6 text-white" />
+                                      )}
                                     </div>
-                                    {!isLocalSearch && <span className="absolute -bottom-2 -left-2 bg-white dark:bg-zinc-900 text-zinc-500 font-mono text-[9px] w-5 h-5 flex items-center justify-center rounded-md border border-zinc-200 dark:border-zinc-700 shadow-sm">{index + 1}</span>}
+
+                                    {!isLocalSearch && (
+                                      <span className="absolute -bottom-2 -left-2 bg-white dark:bg-zinc-900 text-zinc-500 font-mono text-[9px] w-5 h-5 flex items-center justify-center rounded-md border border-zinc-200 dark:border-zinc-700 shadow-sm z-10">
+                                        {index + 1}
+                                      </span>
+                                    )}
                                   </div>
                                   
                                   <div onClick={() => { if (editingTitleId !== song.id) { setExpandedSongId(isExpanded ? null : song.id); setEditingId(null); } }} className="flex flex-col min-w-0 flex-1 cursor-pointer">
@@ -726,13 +747,10 @@ export default function SongList(props: any) {
                                               disabled={isFetchingData} 
                                               onClick={() => { 
                                                 setEditingId(song.id); 
-                                                
-                                                // KINI ANG SPECIFIC CHANGE:
                                                 const rawText = song[activeTab] || "";
                                                 const textToEdit = activeTab === 'lyrics' 
                                                   ? stripChordsForEdit(rawText) 
-                                                  : rawText; // Kung chords tab, ayaw i-strip
-                                                  
+                                                  : rawText;
                                                 setTempText(textToEdit); 
                                               }} 
                                               className={`flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl font-bold text-[10px] uppercase tracking-wider shadow-sm transition-all text-zinc-600 dark:text-zinc-300 ${isFetchingData ? 'opacity-50 cursor-not-allowed' : 'hover:border-indigo-500 hover:text-indigo-600 active:scale-95'}`}
@@ -787,9 +805,7 @@ export default function SongList(props: any) {
                                     </div>
                                   ) : (
                                     <div className="py-16">
-                                      {/* MINIMALIST EMPTY STATE */}
                                       <div className="flex flex-col items-center justify-center animate-in fade-in duration-1000">
-                                        {/* Subtle Icon with Ring */}
                                         <div className="relative mb-6">
                                           <div className="absolute inset-0 bg-indigo-500/10 dark:bg-indigo-500/5 blur-2xl rounded-full" />
                                           <div className="relative w-16 h-16 bg-white dark:bg-zinc-900 border border-zinc-200/50 dark:border-white/5 rounded-full flex items-center justify-center shadow-sm">
@@ -797,7 +813,6 @@ export default function SongList(props: any) {
                                           </div>
                                         </div>
 
-                                        {/* Elegant Typography */}
                                         <div className="text-center space-y-1">
                                           <p className="text-zinc-400 dark:text-zinc-500 text-[11px] font-black uppercase tracking-[0.25em]">
                                             No {activeTab} available
@@ -807,7 +822,6 @@ export default function SongList(props: any) {
                                           </p>
                                         </div>
                                         
-                                        {/* Decorative Bottom Line */}
                                         <div className="mt-8 w-12 h-0.5 bg-linear-to-r from-transparent via-zinc-200 dark:via-zinc-800 to-transparent" />
                                       </div>
                                     </div>

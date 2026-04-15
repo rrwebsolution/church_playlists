@@ -225,66 +225,68 @@ export const Header = ({
     </div>
 
     {/* LIST AREA: Compact & Smooth */}
-    <div className="overflow-y-auto p-2 md:p-3 space-y-1.5 custom-scrollbar">
-      {isFetching && (!youtubeResults || youtubeResults.length === 0) ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-4">
-          <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 animate-pulse">Fetching Cloud Data</span>
-        </div>
-      ) : (
-        youtubeResults?.map((yt: any, index: number) => {
-          const isSelected = index === selectedIndex;
-          const isImporting = importingId === yt.videoId;
-
-          return (
-            <div 
-              key={yt.videoId}
-              onMouseEnter={() => setSelectedIndex(index)}
-              onClick={() => { if (!isImporting && onImportYT) onImportYT(yt); }}
-              className={`group relative flex items-center gap-3.5 p-2 md:p-2.5 rounded-xl cursor-pointer transition-all duration-300 
-                ${isSelected 
-                  ? 'text-indigo-500 shadow-lg' 
-                  : 'bg-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
-                }`}
-            >
-              {/* Compact Thumbnail */}
-              <div className="relative shrink-0 overflow-hidden rounded-lg shadow-sm border border-black/5 dark:border-white/10">
-                <img 
-                  src={`https://i.ytimg.com/vi/${yt.videoId}/mqdefault.jpg`} 
-                  alt="" 
-                  className="w-20 h-12 md:w-28 md:h-16 object-cover" 
-                />
-                {isSelected && <div className="absolute inset-0 bg-indigo-900/20" />}
-              </div>
-
-              {/* Smaller Typography */}
-              <div className="flex flex-col min-w-0 flex-1">
-                <span className={`text-[13px] md:text-[15px] font-bold line-clamp-1 leading-tight ${isSelected ? 'text-white' : 'text-zinc-800 dark:text-zinc-100'}`}>
-                  {yt.title}
-                </span>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider 
-                    ${isSelected ? 'bg-white/20 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>
-                    {yt.author}
-                  </span>
-                </div>
-              </div>
-              
-              {/* Compact Action Icon */}
-              <div className="shrink-0 px-2">
-                {isImporting ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <div className={`p-2 rounded-lg transition-all ${isSelected ? 'text-white scale-110' : 'text-zinc-300 group-hover:text-indigo-500'}`}>
-                    <DownloadCloud className="w-4 h-4 md:w-5 md:h-5" />
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
+    <div className="overflow-y-auto p-2 md:p-3 space-y-1 custom-scrollbar">
+  {isFetching && (!youtubeResults || youtubeResults.length === 0) ? (
+    <div className="flex flex-col items-center justify-center py-16 gap-4">
+      <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500 animate-pulse">Fetching Cloud Data</span>
     </div>
+  ) : (
+    youtubeResults?.map((yt: any, index: number) => {
+      const isSelected = index === selectedIndex;
+      const isImporting = importingId === yt.videoId;
+
+      return (
+        <div 
+          key={yt.videoId}
+          onMouseEnter={() => setSelectedIndex(index)}
+          onClick={() => { if (!isImporting && onImportYT) onImportYT(yt); }}
+          className="group relative flex items-center gap-3.5 p-2 md:p-2.5 cursor-pointer transition-all duration-200"
+        >
+          {/* Vertical Indicator Bar (Kini ra ang mo-color para simple) */}
+          <div className={`absolute left-0 w-1 rounded-full transition-all duration-300 
+            ${isSelected ? 'h-6 bg-indigo-500' : 'h-0 bg-transparent'}`} 
+          />
+
+          {/* Thumbnail (Limpyo na ni, wala nay overlay) */}
+          <div className="relative shrink-0 overflow-hidden rounded-lg shadow-sm">
+            <img 
+              src={`https://i.ytimg.com/vi/${yt.videoId}/mqdefault.jpg`} 
+              alt="" 
+              className="w-20 h-12 md:w-28 md:h-16 object-cover block" 
+            />
+          </div>
+
+          {/* Typography */}
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className={`text-[13px] md:text-[15px] font-bold line-clamp-1 leading-tight transition-colors duration-200
+              ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-700 dark:text-zinc-300'}`}>
+              {yt.title}
+            </span>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={`text-[10px] font-medium transition-colors
+                ${isSelected ? 'text-indigo-500/70' : 'text-zinc-500'}`}>
+                {yt.author}
+              </span>
+            </div>
+          </div>
+          
+          {/* Action Icon */}
+          <div className="shrink-0 px-2">
+            {isImporting ? (
+              <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <div className={`transition-all duration-300 
+                ${isSelected ? 'text-indigo-500 opacity-100 scale-110' : 'text-zinc-300 opacity-0 group-hover:opacity-100'}`}>
+                <DownloadCloud className="w-4 h-4 md:w-5 md:h-5" />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    })
+  )}
+</div>
 
     {/* COMPACT FOOTER */}
     <div className="px-5 py-2.5 bg-zinc-50 dark:bg-zinc-950/30 border-t border-zinc-200/50 dark:border-white/5 flex justify-between items-center shrink-0">

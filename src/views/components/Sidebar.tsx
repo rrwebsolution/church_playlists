@@ -1,5 +1,5 @@
 import { 
-  Music, X, Folder, Bookmark, History, Settings, 
+  X, Folder, Bookmark, History, Settings, 
   ChevronLeft, ChevronRight 
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -14,7 +14,6 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // I-save ang state sa local storage para dili mabalik sa dako inig refresh
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
@@ -36,7 +35,7 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
       ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} 
       w-64 ${isCollapsed ? 'md:w-20' : 'md:w-64'}`}
     >
-      {/* DESKTOP COLLAPSE BUTTON (Gi-center na sa kilid) */}
+      {/* DESKTOP COLLAPSE BUTTON */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-full items-center justify-center text-zinc-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:scale-110 shadow-md transition-all z-50"
@@ -44,46 +43,54 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
         {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
-      {/* HEADER / LOGO AREA */}
-      <div className={`h-20 flex items-center ${isCollapsed ? 'md:justify-center px-6 md:px-0' : 'justify-between px-6'} border-b border-zinc-200 dark:border-zinc-800 text-indigo-600 dark:text-indigo-400 font-bold text-xl shrink-0 overflow-hidden`}>
-        <div className="flex items-center gap-3">
-          <Music className="w-6 h-6 shrink-0" />
+      {/* HEADER AREA */}
+      <div className={`h-16 flex items-center ${isCollapsed ? 'md:justify-center px-6 md:px-0' : 'justify-between px-6'} border-b border-zinc-200 dark:border-zinc-800 text-indigo-600 dark:text-indigo-400 font-semibold text-sm uppercase tracking-widest shrink-0 overflow-hidden`}>
+        <div className="flex items-center">
           <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'block'}`}>
-            JAMC Worship DJ
+            JAMC Worship Flow
           </span>
+          {isCollapsed && <span className="hidden md:block font-bold text-lg">J</span>}
         </div>
-        {/* MOBILE CLOSE BUTTON */}
         <button className="md:hidden text-zinc-400" onClick={() => setIsSidebarOpen(false)}>
           <X className="w-6 h-6" />
         </button>
       </div>
 
       {/* NAVIGATION LINKS */}
-      <nav className="flex-1 p-3 md:p-4 space-y-2 overflow-y-auto custom-scrollbar overflow-x-hidden">
+      <nav className={`flex-1 p-3 md:p-4 space-y-2 overflow-y-auto custom-scrollbar ${isCollapsed ? 'overflow-x-visible' : 'overflow-x-hidden'}`}>
         {menuItems.map((item) => {
           const isActive = location.pathname.startsWith(item.path);
           return (
-            <button
-              key={item.id}
-              onClick={() => { navigate(item.path); setIsSidebarOpen(false); }}
-              title={isCollapsed ? item.label : undefined}
-              className={`w-full flex items-center ${isCollapsed ? 'md:justify-center md:px-0 px-4' : 'gap-3 px-4'} py-3 rounded-xl transition-all text-sm font-medium border group ${
-                isActive 
-                  ? 'bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-500/20' 
-                  : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-100 border-transparent'
-              }`}
-            >
-              <item.icon className={`w-5 h-5 shrink-0 transition-transform ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-400 group-hover:scale-110'}`} />
-              <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'block'}`}>
-                {item.label}
-              </span>
-            </button>
+            <div key={item.id} className="relative group flex items-center">
+              <button
+                onClick={() => { navigate(item.path); setIsSidebarOpen(false); }}
+                className={`w-full flex items-center ${isCollapsed ? 'md:justify-center md:px-0 px-4' : 'gap-3 px-4'} py-3 rounded-xl transition-all text-sm font-medium border ${
+                  isActive 
+                    ? 'bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-500/20' 
+                    : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-100 border-transparent'
+                }`}
+              >
+                <item.icon className={`w-5 h-5 shrink-0 transition-transform ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-400 group-hover:scale-110'}`} />
+                <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'block'}`}>
+                  {item.label}
+                </span>
+              </button>
+
+              {/* CUSTOM TOOLTIP (Only shows when collapsed) */}
+              {isCollapsed && (
+                <div className="fixed left-full ml-4 px-3 py-2 bg-zinc-900 dark:bg-zinc-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-100 shadow-xl border border-zinc-700/50 pointer-events-none">
+                  {/* Tooltip Arrow */}
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-zinc-900 dark:border-r-zinc-800"></div>
+                  {item.label}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>
 
-      {/* FOOTER AREA */}
-      <div className={`p-4 border-t border-zinc-200 dark:border-zinc-800 text-[10px] text-zinc-400 dark:text-zinc-600 text-center font-bold tracking-widest overflow-hidden whitespace-nowrap transition-all duration-300`}>
+      {/* FOOTER */}
+      <div className={`p-4 border-t border-zinc-200 dark:border-zinc-800 text-[9px] text-zinc-400 dark:text-zinc-600 text-center font-medium tracking-widest overflow-hidden whitespace-nowrap transition-all duration-300`}>
         {isCollapsed ? 'V1.0' : 'JAMC TAGOLOAN CHURCH SYSTEM V1.0'}
       </div>
     </aside>

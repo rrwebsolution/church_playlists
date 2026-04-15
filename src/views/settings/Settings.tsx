@@ -156,7 +156,7 @@ export default function Settings() {
                   type="text" 
                   value={churchName}
                   onChange={(e) => setChurchName(e.target.value)}
-                  placeholder="e.g. Victory Church Main"
+                  placeholder="e.g. JAMC Tagoloan"
                   className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm dark:shadow-none"
                 />
               </div>

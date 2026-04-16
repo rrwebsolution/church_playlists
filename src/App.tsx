@@ -40,6 +40,7 @@ export interface PptPresentationFile {
   uploadedAt: string;
   thumbnailUrl?: string;
   sourceText?: string;
+  templateId?: string;
 }
 
 export default function App() {

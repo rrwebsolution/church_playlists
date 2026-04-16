@@ -1,130 +1,168 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { ChevronLeft, MonitorDot, Layers, FileText } from 'lucide-react';
+import { ChevronLeft, MonitorDot, Layers, FileText, ChevronRight } from 'lucide-react';
 import type { PptPresentationFile } from '@/App';
+import { PPT_TEMPLATES } from '../Pptpresenatation'; 
 
 export default function PptViewer() {
-  const { id } = useParams<{ id: string }>(); // Kuhaon ang ID gikan sa URL
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  // 🔥 Kuhaon ang presentations gikan sa App.tsx context 🔥
   const { presentations } = useOutletContext<{ presentations: PptPresentationFile[] }>(); 
 
   const presentation = useMemo(() => {
     return presentations.find(p => p.id === id);
   }, [id, presentations]);
 
-  if (!presentation) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-zinc-400 dark:text-zinc-600">
-        <MonitorDot className="w-16 h-16 mb-4" />
-        <h2 className="text-xl font-bold">Presentation Not Found</h2>
-        <p className="text-sm">The presentation you are looking for does not exist.</p>
-        <button onClick={() => navigate('/app/ppt-presentation')} className="mt-8 px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-semibold">
-          Go back to Presentations
-        </button>
-      </div>
-    );
-  }
+  const template = useMemo(() => {
+    if (!presentation?.templateId) return PPT_TEMPLATES[0];
+    return PPT_TEMPLATES.find(t => t.id === presentation.templateId) || PPT_TEMPLATES[0];
+  }, [presentation]);
 
-  // State para sa current slide (kung naay multiple slides from sourceText)
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
   const slides = useMemo(() => {
-    if (presentation.sourceText) {
-      // Mag-split sa source text base sa double newline para sa slides
+    if (presentation?.sourceText) {
       const rawSlides = presentation.sourceText.split(/\n\s*\n/).filter(block => block.trim().length > 0);
-      return rawSlides.map((slideText, index) => {
-        // Simple formatting to show "label" from the first line if it exists
+      return rawSlides.map((slideText) => {
         const lines = slideText.split('\n');
         const firstLine = lines[0].trim();
         const headerMatch = firstLine.match(/^\[?(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Tag|Ending|Instrumental)[^\]]*\]?:?$/i);
         
-        let label = headerMatch ? headerMatch[1].replace(/[\[\]:]/g, '') : `Slide ${index + 1}`;
+        let label = headerMatch ? headerMatch[1].replace(/[\[\]:]/g, '') : null;
         let content = headerMatch && lines.length > 1 ? lines.slice(1).join('\n').trim() : slideText.trim();
 
         return { label, content };
       });
     }
-    return []; // Empty for uploaded PPT files
-  }, [presentation.sourceText]);
+    return [];
+  }, [presentation?.sourceText]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        setCurrentSlideIndex(prev => Math.min(slides.length - 1, prev + 1));
+      } else if (e.key === 'ArrowLeft') {
+        setCurrentSlideIndex(prev => Math.max(0, prev - 1));
+      } else if (e.key === 'Escape') {
+        navigate('/app/ppt-presentation');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [slides.length, navigate]);
+
+  if (!presentation) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-20 text-zinc-400 dark:text-zinc-600">
+        <MonitorDot className="w-16 h-16 mb-4" />
+        <h2 className="text-xl font-bold">Presentation Not Found</h2>
+        <button onClick={() => navigate('/app/ppt-presentation')} className="mt-8 px-6 py-3 bg-indigo-600 text-white rounded-xl text-sm font-semibold">
+          Go back
+        </button>
+      </div>
+    );
+  }
 
   const currentSlide = slides[currentSlideIndex];
 
   return (
-    <div className="animate-in fade-in duration-700 relative h-full">
+    <div className={`animate-in fade-in duration-1000 relative h-screen flex flex-col overflow-hidden transition-all ${template.bg}`}>
+      
       {/* HEADER / NAVIGATION */}
-      <div className="flex items-center justify-between p-4 md:p-6 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/app/ppt-presentation')} className="p-2 md:p-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all active:scale-90">
+      <div className="flex items-center justify-between p-4 md:p-6 bg-black/20 backdrop-blur-md border-b border-white/10 z-50">
+        <div className="flex items-center gap-4 text-white">
+          <button 
+            onClick={() => navigate('/app/ppt-presentation')} 
+            className="p-2 md:p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all active:scale-90"
+          >
             <ChevronLeft className="w-5 h-5" />
           </button>
           <div className="flex flex-col">
-            <h1 className="text-xl md:text-2xl font-black text-zinc-900 dark:text-zinc-100 truncate max-w-50 md:max-w-md">
+            <h1 className="text-xl md:text-2xl font-black uppercase italic tracking-tight drop-shadow-md">
               {presentation.name}
             </h1>
-            <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
-                <Layers className="w-3 h-3" /> {slides.length} Slides ({presentation.sourceText ? 'Generated' : 'Uploaded'})
-            </p>
+            <div className="flex items-center gap-3 text-white/50 text-[10px] font-bold uppercase tracking-widest">
+                <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {slides.length} Slides</span>
+                <span className="px-2 py-0.5 bg-white/10 rounded text-white/80">{template.name}</span>
+            </div>
           </div>
         </div>
         
-        {/* SLIDE CONTROLS (Kung naay slides) */}
+        {/* SLIDE CONTROLS */}
         {slides.length > 0 && (
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 bg-black/30 px-4 py-2 rounded-full border border-white/10">
             <button 
                 onClick={() => setCurrentSlideIndex(prev => Math.max(0, prev - 1))} 
                 disabled={currentSlideIndex === 0}
-                className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-50 transition-all"
+                className="p-2 text-white/60 hover:text-white disabled:opacity-20 transition-all"
             >
-                <ChevronLeft className="w-5 h-5" />
+                <ChevronLeft className="w-6 h-6" />
             </button>
-            <span className="text-lg font-bold text-zinc-800 dark:text-zinc-100">{currentSlideIndex + 1} / {slides.length}</span>
+            <span className="text-sm font-black text-white min-w-15 text-center tracking-tighter">
+                {currentSlideIndex + 1} / {slides.length}
+            </span>
             <button 
                 onClick={() => setCurrentSlideIndex(prev => Math.min(slides.length - 1, prev + 1))} 
                 disabled={currentSlideIndex === slides.length - 1}
-                className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-50 transition-all"
+                className="p-2 text-white/60 hover:text-white disabled:opacity-20 transition-all"
             >
-                <ChevronLeft className="w-5 h-5 rotate-180" /> {/* ChevronRight is rotated */}
+                <ChevronRight className="w-6 h-6" />
             </button>
           </div>
         )}
       </div>
 
       {/* PRESENTATION CONTENT AREA */}
-      <div className="flex-1 p-6 md:p-10 flex flex-col items-center justify-center h-[calc(100vh-140px)] overflow-hidden">
+      <div className="flex-1 flex items-center justify-center p-6 md:p-12 relative">
+        
         {presentation.sourceText ? (
-          <div className="relative w-full max-w-4xl h-full bg-black rounded-3xl shadow-2xl flex items-center justify-center p-8 text-white text-center overflow-hidden">
-            {/* Displaying the current slide */}
-            <div className="text-4xl md:text-5xl font-black leading-tight whitespace-pre-wrap">
+          /* 🔥 GI-AYO: Gitangtang ang secondary template.bg ug shadow 🔥 */
+          <div className={`w-full h-full flex flex-col items-center justify-center p-12 md:p-20 text-center relative transition-all duration-500 ${template.text} ${template.font}`}>
+            
+            {/* Slide Content */}
+            <div className="relative z-10 w-full animate-in zoom-in-95 fade-in duration-500">
               {currentSlide ? (
                 <>
-                  {currentSlide.label && <span className="block text-indigo-400 text-xl md:text-2xl mb-4 uppercase">{currentSlide.label}</span>}
-                  {currentSlide.content}
+                  {currentSlide.label && (
+                    <span className={`block text-2xl md:text-4xl mb-10 font-black uppercase tracking-[0.4em] opacity-70 ${template.accent}`}>
+                      {currentSlide.label}
+                    </span>
+                  )}
+                  <div className="text-4xl md:text-7xl font-black leading-[1.1] whitespace-pre-wrap drop-shadow-2xl">
+                    {currentSlide.content}
+                  </div>
                 </>
               ) : (
-                <span className="text-zinc-500/50">No content for this slide.</span>
+                <span className="opacity-20 italic text-4xl uppercase tracking-widest font-black">End of Presentation</span>
               )}
             </div>
-            {/* Thumbnail/Preview if available */}
-            {presentation.thumbnailUrl && (
-                <img 
-                    src={presentation.thumbnailUrl} 
-                    alt="Presentation Thumbnail" 
-                    className="absolute inset-0 w-full h-full object-cover opacity-10 blur-xl pointer-events-none" 
-                />
-            )}
+
+            {/* Subtle Watermark Decoration */}
+            <div className="absolute bottom-10 right-10 opacity-5 pointer-events-none">
+                <MonitorDot className="w-32 h-32 text-current" />
+            </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center p-10 bg-white/10 rounded-3xl text-white/70 shadow-lg border border-white/5 backdrop-blur-md">
-            <FileText className="w-16 h-16 mb-4" />
-            <h2 className="text-2xl font-bold mb-2">Native PPT File</h2>
-            <p className="text-sm text-center max-w-md">
-              This is an uploaded PowerPoint file. For actual viewing and control, 
-              you would typically integrate a specialized viewer (e.g., Office Web Viewer, or a backend conversion service).
+          <div className="flex flex-col items-center justify-center p-16 bg-white/5 rounded-[3rem] text-white/50 border border-white/10 backdrop-blur-xl shadow-2xl">
+            <FileText className="w-20 h-20 mb-6 opacity-20" />
+            <h2 className="text-3xl font-black uppercase tracking-tighter mb-4">Native PowerPoint</h2>
+            <p className="text-sm text-center max-w-md font-medium leading-relaxed">
+              This presentation was uploaded as a file. Use a dedicated PPT viewer or screen sharing.
             </p>
           </div>
         )}
       </div>
+
+      {/* PROGRESS BAR (Bottom) */}
+      {slides.length > 0 && (
+          <div className="absolute bottom-0 left-0 w-full h-1.5 bg-white/5">
+              <div 
+                className="h-full bg-indigo-500 transition-all duration-500 ease-out shadow-[0_0_15px_rgba(99,102,241,0.8)]"
+                style={{ width: `${((currentSlideIndex + 1) / slides.length) * 100}%` }}
+              />
+          </div>
+      )}
     </div>
   );
 }

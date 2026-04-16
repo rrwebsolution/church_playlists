@@ -1,353 +1,269 @@
-import React, { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { 
-  UploadCloud, Presentation, FileText,
-  Search, Trash2, X, CalendarDays,
-  Layers, MonitorDot, PlusCircle
+  UploadCloud, Presentation, Search, Trash2, CalendarDays,
+  Layers, MonitorDot, PlusCircle, Sparkles, 
+  Edit3, MoreVertical, LayoutPanelLeft, Check
 } from 'lucide-react'; 
 import Swal from 'sweetalert2';
-import { useNavigate, useOutletContext } from 'react-router-dom'; // 🔥 Gidugang ang useNavigate ug useOutletContext
-
-// Import ang type gikan sa App.tsx
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import type { PptPresentationFile } from '../../App'; 
 
+export const PPT_TEMPLATES = [
+  { id: 'classic-dark', name: 'Classic Dark', bg: 'bg-zinc-950', text: 'text-white', accent: 'text-indigo-400', font: 'font-sans' },
+  { id: 'modern-light', name: 'Modern Light', bg: 'bg-zinc-50', text: 'text-zinc-900', accent: 'text-indigo-600', font: 'font-sans' },
+  { id: 'worship-blue', name: 'Worship Night', bg: 'bg-linear-to-br from-indigo-900 via-blue-900 to-black', text: 'text-white', accent: 'text-sky-300', font: 'font-serif' },
+  { id: 'sunset-gradient', name: 'Deep Sunset', bg: 'bg-linear-to-br from-orange-900 via-red-900 to-zinc-950', text: 'text-orange-50', accent: 'text-yellow-400', font: 'font-sans' },
+  { id: 'minimal-green', name: 'Nature Clean', bg: 'bg-emerald-950', text: 'text-emerald-50', accent: 'text-emerald-400', font: 'font-serif' },
+  { id: 'royal-purple', name: 'Royal Majesty', bg: 'bg-linear-to-tr from-purple-900 to-indigo-950', text: 'text-purple-50', accent: 'text-fuchsia-400', font: 'font-sans' },
+];
+
 const Toast = Swal.mixin({
-  toast: true,
-  position: 'top-end',
-  showConfirmButton: false,
-  timer: 2000,
-  timerProgressBar: true,
-  customClass: { container: 'z-[99999]' }
+  toast: true, position: 'top-end', showConfirmButton: false, timer: 2000, timerProgressBar: true,
 });
 
-// HELPER FUNCTION PARA MAG-KATEGORYA BASE SA ORAS UG MAG-SORT (LATEST FIRST)
 const categorizeByTime = <T extends { id: string; uploadedAt: string }>(items: T[]) => {
-  const groups: Record<string, T[]> = {
-    'Today': [],
-    'This Week': [],
-    'This Month':[],
-    'Older':[]
-  };
-
+  const groups: Record<string, T[]> = { 'Today': [], 'This Week': [], 'This Month':[], 'Older':[] };
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const oneDay = 24 * 60 * 60 * 1000;
   const thisWeekStart = todayStart - (7 * oneDay);
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-  const sortedItems = [...items].sort((a, b) => {
-    const timeA = new Date(a.uploadedAt).getTime();
-    const timeB = new Date(b.uploadedAt).getTime();
-    return timeB - timeA;
-  });
+  const sortedItems = [...items].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
 
   sortedItems.forEach(item => {
     const time = new Date(item.uploadedAt).getTime();
-    
-    if (time >= todayStart) {
-      groups['Today'].push(item);
-    } else if (time >= thisWeekStart) {
-      groups['This Week'].push(item);
-    } else if (time >= thisMonthStart) {
-      groups['This Month'].push(item);
-    } else {
-      groups['Older'].push(item);
-    }
+    if (time >= todayStart) groups['Today'].push(item);
+    else if (time >= thisWeekStart) groups['This Week'].push(item);
+    else if (time >= thisMonthStart) groups['This Month'].push(item);
+    else groups['Older'].push(item);
   });
-
   return groups;
 };
 
-// HELPER PARA SA FORMAT SA PETSA
-const formatUploadedDate = (dateString: string) => {
-  if (!dateString) return "Unknown Date";
-  return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-};
-
-// HELPER FUNCTION PARA MAG-CONVERT OG TEXT NGADTO SA MOCK SLIDES
-const generateMockSlidesFromText = (text: string): { title: string; slides: string[] } => {
-  const blocks = text.split(/\n\s*\n/).filter(block => block.trim().length > 0);
-  const slides: string[] = [];
-  let defaultTitle = "Generated Presentation";
-
-  blocks.forEach((block, index) => {
-    let lines = block.trim().split('\n');
-    let label = `Slide ${index + 1}`;
-    const firstLine = lines[0].trim();
-
-    const headerMatch = firstLine.match(/^\[?(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Tag|Ending|Instrumental)[^\]]*\]?:?$/i);
-    if (headerMatch) {
-        label = headerMatch[1].replace(/[\[\]:]/g, '');
-        if (lines.length > 1) {
-            lines = lines.slice(1);
-        } else {
-            lines = [];
-        }
-    }
-    slides.push(`${label}\n${lines.join('\n').trim()}`);
-  });
-
-  if (blocks.length > 0 && !blocks[0].trim().match(/^\[?(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Tag|Ending|Instrumental)[^\]]*\]?:?$/i)) {
-      defaultTitle = blocks[0].trim().split('\n')[0].substring(0, 50);
-  }
-
-  return { title: defaultTitle, slides };
-};
-
+interface SlideContent { id: number; text: string; }
 
 export default function Pptpresenatation() {
-  // 🔥 Kuhaon ang presentations state gikan sa App.tsx context 🔥
-  const { presentations, setPresentations } = useOutletContext<{ 
-    presentations: PptPresentationFile[], 
-    setPresentations: React.Dispatch<React.SetStateAction<PptPresentationFile[]>> 
-  }>();
-
-  const navigate = useNavigate(); // Initialize useNavigate
+  const { presentations, setPresentations } = useOutletContext<any>();
+  const navigate = useNavigate(); 
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [generateTitle, setGenerateTitle] = useState('');
-  const [generateText, setGenerateText] = useState('');
-
   const presentationListRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
-  // useEffect(() => { // 🔥 Dili na kinahanglan kini nga useEffect kay naa na sa App.tsx
-  //   localStorage.setItem('jamc_ppt_presentations', JSON.stringify(presentations));
-  // }, [presentations]);
+  // EDITOR STATES
+  const [generateTitle, setGenerateTitle] = useState('');
+  const [slidesToGenerate, setSlidesToGenerate] = useState<SlideContent[]>([{ id: Date.now(), text: '' }]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(PPT_TEMPLATES[0].id);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const filteredAndCategorizedPresentations = useMemo(() => {
-    let filtered = presentations.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    let filtered = presentations.filter((p: any) => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
     return categorizeByTime(filtered);
   }, [presentations, searchQuery]);
 
+  // 🔥 CHECK KUNG NAA BAY RESULTA SA SEARCH 🔥
   const hasSearchResults = useMemo(() => {
-    return Object.values(filteredAndCategorizedPresentations).some(group => group.length > 0);
+      return Object.values(filteredAndCategorizedPresentations).some(group => group.length > 0);
   }, [filteredAndCategorizedPresentations]);
 
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const newPresentation: PptPresentationFile = {
-        id: Date.now().toString(),
-        name: file.name.replace(/\.(pptx|ppt)$/i, ''),
-        slidesCount: Math.floor(Math.random() * 20) + 10, 
-        uploadedAt: new Date().toISOString(),
-        thumbnailUrl: 'https://via.placeholder.com/150/4f46e5/ffffff?text=PPT_UPLOAD' 
-      };
-      setPresentations(prev => [newPresentation, ...prev]);
-      Toast.fire({ icon: 'success', title: 'PPT Uploaded!' });
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''; 
-      }
-      setTimeout(() => {
-        presentationListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100); 
+  const handleEditSlides = (p: PptPresentationFile) => {
+    setActiveMenuId(null);
+    setEditingId(p.id);
+    setGenerateTitle(p.name);
+    setSelectedTemplateId(p.templateId || PPT_TEMPLATES[0].id);
+    if (p.sourceText) {
+      const rawBlocks = p.sourceText.split(/\n\s*\n/).filter(b => b.trim() !== '');
+      setSlidesToGenerate(rawBlocks.map((text, i) => ({ id: Date.now() + i, text: text.replace(/\u200B/g, '') })));
     }
+    editorRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleRenameClick = (p: PptPresentationFile) => {
+    setActiveMenuId(null);
+    setRenamingId(p.id);
+    setRenameValue(p.name);
+  };
+
+  const handleSaveRename = (id: string) => {
+    if (!renameValue.trim()) return;
+    setPresentations((prev: any) => prev.map((p: any) => p.id === id ? { ...p, name: renameValue.trim() } : p));
+    setRenamingId(null);
+    Toast.fire({ icon: 'success', title: 'Renamed!' });
   };
 
   const handleGenerateSlides = () => {
-    if (!generateText.trim()) {
-        Swal.fire({ icon: 'warning', title: 'Editor Empty', text: 'Please paste some lyrics or text to generate slides.' });
-        return;
-    }
+    const validSlides = slidesToGenerate.filter(s => s.text.trim() !== '');
+    if (validSlides.length === 0) return;
+    const combinedText = validSlides.map(s => s.text.trim().replace(/\n[ \t]*\n/g, '\n\u200B\n')).join('\n\n');
+    let finalTitle = generateTitle.trim() || validSlides[0].text.split('\n')[0].substring(0, 40);
 
-    const { title, slides } = generateMockSlidesFromText(generateText);
-
-    const newPresentation: PptPresentationFile = {
-        id: Date.now().toString(),
-        name: generateTitle.trim() || title,
-        slidesCount: slides.length,
+    const presentationData = {
+        id: editingId || Date.now().toString(),
+        name: finalTitle,
+        slidesCount: validSlides.length,
         uploadedAt: new Date().toISOString(),
-        thumbnailUrl: 'https://via.placeholder.com/150/4f46e5/ffffff?text=PPT_TEXT',
-        sourceText: generateText,
+        thumbnailUrl: 'https://via.placeholder.com/150/4f46e5/ffffff?text=PPT',
+        sourceText: combinedText,
+        templateId: selectedTemplateId,
     };
-    setPresentations(prev => [newPresentation, ...prev]);
-    
-    setGenerateTitle('');
-    setGenerateText('');
 
-    Toast.fire({ icon: 'success', title: 'Slides Generated!' });
-    setTimeout(() => {
-      presentationListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+    if (editingId) {
+      setPresentations((prev: any) => prev.map((p: any) => p.id === editingId ? presentationData : p));
+      Toast.fire({ icon: 'success', title: 'Presentation Updated!' });
+    } else {
+      setPresentations((prev: any) => [presentationData, ...prev]);
+      Toast.fire({ icon: 'success', title: 'Slides Generated!' });
+    }
+    setEditingId(null);
+    setGenerateTitle('');
+    setSlidesToGenerate([{ id: Date.now(), text: '' }]);
   };
 
-
-  const handleDeletePresentation = async (id: string, name: string) => {
+  const handleDelete = async (p: PptPresentationFile) => {
+    setActiveMenuId(null);
     const result = await Swal.fire({
-      title: 'Delete Presentation?',
-      text: `Are you sure you want to delete "${name}"? This cannot be undone.`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#ef4444',
-      confirmButtonText: 'Yes, delete it!'
+      title: 'Delete?', text: `Delete "${p.name}"?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444'
     });
     if (result.isConfirmed) {
-      setPresentations(prev => prev.filter(p => p.id !== id));
-      Toast.fire({ icon: 'success', title: 'Presentation deleted!' });
+      setPresentations((prev: any) => prev.filter((item: any) => item.id !== p.id));
+      Toast.fire({ icon: 'success', title: 'Deleted' });
     }
-  };
-
-  // 🔥 GI-UPDATE: Mo-navigate na sa PptViewer.tsx 🔥
-  const handleOpenPresentation = (presentation: PptPresentationFile) => {
-    navigate(`/app/ppt-presentation/${presentation.id}`);
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-32 px-4 relative min-h-screen font-sans bg-zinc-50 dark:bg-zinc-950">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-32 px-4 relative min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans">
       
-      {/* HEADER SECTION */}
+      {/* HEADER */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pt-6 px-2">
         <div className="flex items-center gap-5">
-          <div className="p-4 bg-purple-500 text-white rounded-3xl shadow-xl shadow-purple-500/20">
-            <MonitorDot className="w-8 h-8" />
-          </div>
+          <div className="p-4 bg-purple-500 text-white rounded-3xl shadow-xl shadow-purple-500/20"><MonitorDot className="w-8 h-8" /></div>
           <div>
-            <h1 className="text-3xl md:text-4xl font-black text-zinc-900 dark:text-zinc-100 uppercase italic tracking-tighter">
-              PPT Presentation
-            </h1>
-            <p className="text-zinc-500 text-[11px] font-black uppercase tracking-widest leading-none mt-2">
-              Manage and Broadcast PowerPoint Files
-            </p>
+            <h1 className="text-3xl md:text-4xl font-black text-zinc-900 dark:text-zinc-100 uppercase italic tracking-tighter">PPT Presentation</h1>
+            <p className="text-zinc-500 text-[11px] font-black uppercase tracking-widest leading-none mt-2">Manage PowerPoint & Text Slides</p>
           </div>
         </div>
-
-        {/* UPLOAD BUTTON */}
-        <button 
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-2 px-7 py-4 bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all"
-        >
-          <UploadCloud className="w-4 h-4" /> Upload New PPT
-          <input 
-            type="file" 
-            accept=".ppt,.pptx" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-            className="hidden" 
-          />
+        <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-7 py-4 bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 transition-all">
+          <UploadCloud className="w-4 h-4" /> Upload PPT
+          <input type="file" accept=".ppt,.pptx" ref={fileInputRef} onChange={() => {}} className="hidden" />
         </button>
       </div>
 
-      {/* MAIN CONTENT AREA */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start mt-10">
         
-        {/* LEFT SIDE: TEXT-BASED SLIDES GENERATOR */}
-        <div className="lg:col-span-1 p-8 rounded-[2rem] bg-white/70 dark:bg-zinc-900/70 border border-zinc-200 dark:border-white/5 shadow-lg backdrop-blur-md flex flex-col justify-start min-h-100">
-            <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-500" /> Generate from Text
-            </h3>
-            <p className="text-zinc-600 dark:text-zinc-400 text-sm font-medium mb-6">
-                Paste your lyrics or text below to quickly create presentation slides.
-            </p>
+        {/* EDITOR (LEFT) */}
+        <div ref={editorRef} className={`lg:col-span-1 p-6 md:p-8 rounded-[2.5rem] bg-white/70 dark:bg-zinc-900/70 border border-zinc-200 dark:border-white/5 shadow-lg backdrop-blur-md flex flex-col justify-start min-h-160 transition-all ${editingId ? 'ring-2 ring-indigo-500' : ''}`}>
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                    {editingId ? <Sparkles className="w-5 h-5 text-amber-500" /> : <PlusCircle className="w-5 h-5 text-indigo-500" />}
+                    {editingId ? 'Update Slides' : 'Create Slides'}
+                </h3>
+                {editingId && <button onClick={() => {setEditingId(null); setGenerateTitle(''); setSlidesToGenerate([{ id: Date.now(), text: '' }]);}} className="text-[10px] font-bold text-red-500 uppercase border border-red-500/20 px-3 py-1 rounded-lg hover:bg-red-500 hover:text-white transition-all">Cancel Edit</button>}
+            </div>
+            
+            <div className="mb-6">
+                <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-3 block">Template Style</label>
+                <div className="flex items-center gap-3 overflow-x-auto pb-2 no-scrollbar">
+                    {PPT_TEMPLATES.map((tpl) => (
+                        <button key={tpl.id} onClick={() => setSelectedTemplateId(tpl.id)} className={`shrink-0 p-1 rounded-2xl border-2 transition-all ${selectedTemplateId === tpl.id ? 'border-indigo-500 scale-105' : 'border-transparent opacity-50'}`}>
+                            <div className={`w-16 h-10 rounded-xl ${tpl.bg} border border-white/10`} />
+                        </button>
+                    ))}
+                </div>
+            </div>
 
-            <input
-                type="text"
-                value={generateTitle}
-                onChange={(e) => setGenerateTitle(e.target.value)}
-                placeholder="Presentation Title (optional)"
-                className="w-full px-5 py-3 bg-zinc-50 dark:bg-black/40 border-2 border-zinc-100 dark:border-zinc-700 rounded-xl outline-none text-zinc-900 dark:text-zinc-100 font-semibold text-sm placeholder:font-medium placeholder:text-zinc-400 focus:border-indigo-500/50 transition-all mb-4"
-            />
-            <textarea
-                value={generateText}
-                onChange={(e) => setGenerateText(e.target.value)}
-                placeholder="Paste lyrics or text here... Use double-enter for new slides."
-                className="w-full flex-1 h-auto p-5 bg-zinc-50 dark:bg-black/40 border-2 border-zinc-100 dark:border-zinc-700 rounded-xl outline-none text-zinc-800 dark:text-zinc-100 font-semibold text-sm resize-none custom-scrollbar leading-relaxed focus:border-indigo-500/50 transition-all mb-4"
-            />
-            <button
-                onClick={handleGenerateSlides}
-                className="flex items-center justify-center gap-2 px-7 py-3.5 bg-indigo-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-700 active:scale-95 transition-all"
-            >
-                <PlusCircle className="w-4 h-4" /> Generate Slides
-            </button>
+            <input type="text" value={generateTitle} onChange={(e) => setGenerateTitle(e.target.value)} placeholder="Presentation Title..." className="w-full px-5 py-3.5 bg-white dark:bg-black/40 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none text-zinc-900 dark:text-zinc-100 font-bold focus:border-indigo-500/50 mb-6 transition-all" />
+            
+            <div className="flex-1 space-y-6 overflow-y-auto custom-scrollbar pr-2 mb-4 max-h-120">
+              {slidesToGenerate.map((slide, index) => (
+                <div key={slide.id} className="flex items-start gap-3 relative group/slide animate-in fade-in slide-in-from-bottom-2">
+                  <div className="shrink-0 w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-[11px] font-black text-zinc-400">{index + 1}</div>
+                  <textarea value={slide.text} onChange={(e) => setSlidesToGenerate(prev => prev.map(s => s.id === slide.id ? { ...s, text: e.target.value } : s))} placeholder={`Slide ${index + 1} content...`} className="w-full min-h-40 p-5 bg-white dark:bg-black/40 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none text-zinc-800 dark:text-zinc-100 font-semibold focus:border-indigo-500/50 transition-all leading-relaxed" />
+                  {slidesToGenerate.length > 1 && <button onClick={() => setSlidesToGenerate(prev => prev.filter(s => s.id !== slide.id))} className="absolute top-4 right-4 p-2 text-red-500 hover:bg-red-50 rounded-xl"><Trash2 className="w-4 h-4" /></button>}
+                </div>
+              ))}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mt-auto">
+              <button onClick={() => setSlidesToGenerate(prev =>[...prev, { id: Date.now(), text: '' }])} className="flex items-center justify-center gap-2 px-4 py-4 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-2xl text-[11px] font-bold uppercase hover:bg-zinc-200 transition-all"><PlusCircle className="w-5 h-5" /> Add Slide</button>
+              <button onClick={handleGenerateSlides} className="flex items-center justify-center gap-2 px-7 py-4 bg-indigo-600 text-white rounded-2xl text-[11px] font-black uppercase shadow-xl hover:bg-indigo-700 transition-all">{editingId ? 'Update Slides' : 'Generate Slides'}</button>
+            </div>
         </div>
 
-
-        {/* RIGHT SIDE: SEARCH AND PRESENTATION LIST */}
+        {/* LIBRARY (RIGHT) */}
         <div className="lg:col-span-1 space-y-6">
-          {/* Search Bar */}
           <div className="relative w-full group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-focus-within:text-indigo-500 transition-colors" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search presentations..."
-              className="w-full pl-11 pr-11 py-3.5 bg-white dark:bg-zinc-900 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none focus:border-indigo-500/50 text-sm font-semibold transition-all"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-red-500">
-                <X className="w-4 h-4" />
-              </button>
-            )}
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search presentations..." className="w-full pl-11 pr-11 py-3.5 bg-white dark:bg-zinc-900 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none text-sm font-semibold transition-all shadow-sm" />
           </div>
 
-          {/* Presentation List (Categorized) */}
-          {presentations.length === 0 ? (
-            <div className="py-20 text-center opacity-40 px-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[3rem]">
-              <Presentation className="w-12 h-12 mx-auto mb-4" />
-              <p className="font-black uppercase tracking-widest text-xs">No presentations uploaded yet</p>
-            </div>
-          ) : !hasSearchResults && searchQuery !== '' ? (
-            <div className="py-20 text-center opacity-40 px-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[3rem]">
-              <Search className="w-12 h-12 mx-auto mb-4" />
-              <p className="font-black uppercase tracking-widest text-xs">No matching presentations</p>
-            </div>
-          ) : (
-            <div ref={presentationListRef} className="space-y-12">
-              {Object.entries(filteredAndCategorizedPresentations).map(([label, groupPresentations]) => {
-                if (groupPresentations.length === 0) return null;
-                return (
-                  <div key={label} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* 🔥 DYNAMIC LIST WITH SEARCH STATES 🔥 */}
+          <div ref={presentationListRef} className="space-y-12">
+            {presentations.length === 0 ? (
+               // State 1: Wala pa jud na upload
+              <div className="py-20 text-center opacity-40 px-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[3rem]">
+                <Presentation className="w-12 h-12 mx-auto mb-4 text-zinc-400" /><p className="font-black uppercase tracking-widest text-xs text-zinc-500">No presentations yet</p>
+              </div>
+            ) : !hasSearchResults && searchQuery !== '' ? (
+              // 🔥 State 2: Naay gi-search pero walay ni-match 🔥
+              <div className="py-20 text-center opacity-40 px-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[3rem] animate-in fade-in zoom-in-95">
+                <Search className="w-12 h-12 mx-auto mb-4 text-zinc-400" />
+                <p className="font-black uppercase tracking-widest text-xs text-zinc-500">No matching presentations found</p>
+                <button onClick={() => setSearchQuery('')} className="mt-4 text-[10px] font-bold text-indigo-500 uppercase hover:underline">Clear search query</button>
+              </div>
+            ) : (
+              // State 3: I-pakita ang mga results
+              Object.entries(filteredAndCategorizedPresentations).map(([label, groupPresentations]) => (
+                groupPresentations.length > 0 && (
+                  <div key={label} className="animate-in fade-in slide-in-from-bottom-4">
                     <div className="flex items-center gap-4 mb-6 px-2">
-                      <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
-                        <CalendarDays className="w-5 h-5" />
-                        <h3 className="text-lg md:text-xl font-black uppercase tracking-widest">{label}</h3>
-                      </div>
-                      <span className="px-2.5 py-1 bg-zinc-200/50 dark:bg-zinc-800 rounded-lg text-[10px] font-bold text-zinc-500">{groupPresentations.length}</span>
-                      <div className="h-px bg-zinc-200 dark:bg-zinc-800/50 flex-1 ml-2"></div>
+                      <CalendarDays className="w-5 h-5 text-indigo-600" />
+                      <h3 className="text-lg font-black uppercase tracking-widest">{label}</h3>
+                      <div className="h-px bg-zinc-200 dark:bg-zinc-800 flex-1 ml-2"></div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-5">
-                      {groupPresentations.map((presentation) => (
-                        <div 
-                          key={presentation.id} 
-                          className="group flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-3xl p-6 hover:border-indigo-500 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative cursor-pointer overflow-hidden"
-                          onClick={() => handleOpenPresentation(presentation)} // 🔥 Ang onClick kay mo-navigate na!
-                        >
-                          <div className="flex justify-between items-start mb-4">
-                            {presentation.thumbnailUrl ? (
-                              <div className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center bg-zinc-100 dark:bg-zinc-800">
-                                <img src={presentation.thumbnailUrl} alt={presentation.name} className="w-full h-full object-cover" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      {groupPresentations.map((p: any) => (
+                        <div key={p.id} className="group flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-3xl p-6 hover:border-indigo-500 hover:shadow-2xl transition-all relative cursor-pointer" onClick={() => renamingId !== p.id && navigate(`/app/ppt-presentation/${p.id}`)}>
+                          <div className="flex justify-between items-start mb-4 relative z-30">
+                            <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl"><Presentation className="w-7 h-7" /></div>
+                            <div className="flex items-center gap-1">
+                               <button onClick={(e) => { e.stopPropagation(); handleDelete(p); }} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                               <div className="relative">
+                                  <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === p.id ? null : p.id); }} className={`p-2 rounded-xl transition-all ${activeMenuId === p.id ? 'bg-indigo-500 text-white' : 'text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}><MoreVertical className="w-4.5 h-4.5" /></button>
+                                  {activeMenuId === p.id && (
+                                      <div className="absolute top-full right-0 mt-2 w-44 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl shadow-2xl z-50 py-2 animate-in slide-in-from-top-2">
+                                          <button onClick={(e) => {e.stopPropagation(); handleRenameClick(p);}} className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all"><Edit3 className="w-4 h-4 text-indigo-500" /> Rename Title</button>
+                                          <button onClick={(e) => {e.stopPropagation(); handleEditSlides(p);}} className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all"><LayoutPanelLeft className="w-4 h-4 text-purple-500" /> Edit Slide Text</button>
+                                      </div>
+                                  )}
+                               </div>
+                            </div>
+                          </div>
+                          <div className="relative z-20" onClick={(e) => renamingId === p.id && e.stopPropagation()}>
+                            {renamingId === p.id ? (
+                              <div className="flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+                                <input autoFocus type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveRename(p.id); if (e.key === 'Escape') setRenamingId(null); }} className="w-full px-3 py-1.5 bg-zinc-50 dark:bg-zinc-950 border-2 border-indigo-500 rounded-lg outline-none text-sm font-bold text-zinc-900 dark:text-white" />
+                                <button onClick={(e) => { e.stopPropagation(); handleSaveRename(p.id); }} className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all shadow-sm"><Check className="w-4 h-4" /></button>
                               </div>
                             ) : (
-                              <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl">
-                                <Presentation className="w-8 h-8" />
-                              </div>
+                              <h3 className="font-black text-zinc-900 dark:text-zinc-100 truncate text-lg uppercase tracking-tight group-hover:text-indigo-600 transition-colors">{p.name}</h3>
                             )}
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleDeletePresentation(presentation.id, presentation.name); }} 
-                              className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"
-                              title="Delete Presentation"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
                           </div>
-                          <h3 className="font-black text-zinc-900 dark:text-zinc-100 truncate text-lg">{presentation.name}</h3>
-                          <div className="flex flex-col gap-0.5 mt-1">
-                            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest flex items-center gap-1">
-                              <Layers className="w-3 h-3" /> {presentation.slidesCount} Slides
-                            </p>
-                            <p className="text-[8px] text-zinc-500/70 dark:text-zinc-500 font-bold uppercase tracking-widest">
-                              Uploaded: {formatUploadedDate(presentation.uploadedAt)}
-                            </p>
+                          <div className="flex flex-col gap-1 mt-2">
+                            <p className="text-[10px] text-zinc-400 font-bold uppercase flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slidesCount} Slides</p>
+                            <p className="text-[8px] text-zinc-500/70 font-bold uppercase">Created: {new Date(p.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

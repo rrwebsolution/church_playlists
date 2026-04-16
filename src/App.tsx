@@ -43,8 +43,8 @@ export default function App() {
   const [youtubeResults, setYoutubeResults] = useState<any[]>([]);
   const [importingId, setImportingId] = useState<string | null>(null);
 
-  const[folders, setFolders] = useState<PlaylistFolder[]>([]);
-  const[isDataLoaded, setIsDataLoaded] = useState(false); 
+  const [folders, setFolders] = useState<PlaylistFolder[]>([]);
+  const [isDataLoaded, setIsDataLoaded] = useState(false); 
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
   const activeFolder = folders.find(f => f.id === activeFolderId) || null;
 
@@ -54,26 +54,22 @@ export default function App() {
   });
 
   const [isPlaying, setIsPlaying] = useState(false);
-  
   const ytPlayerRef = useRef<any>(null);
   const [ytPlayer, setYtPlayer] = useState<any>(null); 
   
-  // 🔥 DUGANG NGA REF PARA I-TRACK KUNG GI-CLICK BA SA USER O REFRESH RA
-  const userTriggeredPlay = useRef(false);
-  
-  const[isAutoPlayNextEnabled, setIsAutoPlayNextEnabled] = useState(() => {
+  const [isAutoPlayNextEnabled, setIsAutoPlayNextEnabled] = useState(() => {
     const saved = localStorage.getItem('autoplay_next_enabled');
     return saved !== null ? JSON.parse(saved) : true;
   });
 
   const [bgPlayEnabled, setBgPlayEnabled] = useState(true);
-  const[playHistory, setPlayHistory] = useState<any[]>(() => {
+  const [playHistory, setPlayHistory] = useState<any[]>(() => {
     const saved = localStorage.getItem('jamc_history');
-    return saved ? JSON.parse(saved) :[];
+    return saved ? JSON.parse(saved) : [];
   });
   
   const [showFloatingPlayer, setShowFloatingPlayer] = useState(true);
-  const[volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(0.8);
   const [isClient, setIsClient] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -85,19 +81,16 @@ export default function App() {
     const ua = navigator.userAgent;
     const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
-
-    if (isIOS || isSafari) {
-      setShowFloatingPlayer(false);
-    }
-  },[]);
+    if (isIOS || isSafari) setShowFloatingPlayer(false);
+  }, []);
 
   const currentSongRef = useRef<Song | null>(currentSong);
   const foldersRef = useRef<PlaylistFolder[]>(folders);
   const autoPlayRef = useRef<boolean>(isAutoPlayNextEnabled);
 
   useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
-  useEffect(() => { foldersRef.current = folders; },[folders]);
-  useEffect(() => { autoPlayRef.current = isAutoPlayNextEnabled; },[isAutoPlayNextEnabled]);
+  useEffect(() => { foldersRef.current = folders; }, [folders]);
+  useEffect(() => { autoPlayRef.current = isAutoPlayNextEnabled; }, [isAutoPlayNextEnabled]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -105,8 +98,9 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => { setIsClient(true); },[]);
+  useEffect(() => { setIsClient(true); }, []);
 
+  // --- 🔥 YOUTUBE PLAYER INITIALIZATION (CLEANED) 🔥 ---
   const initPlayer = useCallback(() => {
     const container = document.getElementById('vanilla-yt-player');
     if (!container) return; 
@@ -120,11 +114,11 @@ export default function App() {
     ytPlayerRef.current = new window.YT.Player('vanilla-yt-player', {
       videoId: initialId,
       playerVars: {
-        autoplay: 0, // 🔥 GI-USAB NGADTO SA 0 ARON DILI MO-AUTOPLAY INIG REFRESH
+        autoplay: 1, // Autoplay Enabled
+        origin: window.location.origin,
         playsinline: 1,
         controls: 1,
         rel: 0,
-        origin: window.location.origin,
       },
       events: {
         onReady: (event: any) => {
@@ -132,12 +126,10 @@ export default function App() {
           setYtPlayer(event.target);
           event.target.setVolume(Math.round(volume * 100));
           
-          // 🔥 KUNG GI-CLICK SA USER, I-PLAY. KUNG REFRESH RA, I-PAUSE LANG.
-          if (initialId && userTriggeredPlay.current) {
+          if (initialId) {
+            // Diretso play inig ready (Refresh/Entry)
             event.target.playVideo();
             setIsPlaying(true);
-          } else {
-            setIsPlaying(false);
           }
         },
         onStateChange: (event: any) => {
@@ -153,16 +145,12 @@ export default function App() {
 
   useEffect(() => {
     if (!isClient) return;
-
     if (!window.YT) {
       const tag = document.createElement('script');
       tag.src = "https://www.youtube.com/iframe_api";
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
-
-      window.onYouTubeIframeAPIReady = () => {
-        setTimeout(initPlayer, 500); 
-      };
+      window.onYouTubeIframeAPIReady = () => setTimeout(initPlayer, 500);
     } else {
       setTimeout(initPlayer, 500);
     }
@@ -179,20 +167,17 @@ export default function App() {
       setIsPlaying(false); 
       return; 
     }
-
     const currentFolder = foldersRef.current.find(f => f.songs.some(s => s.id === currentSongRef.current?.id));
     if (!currentFolder || currentFolder.songs.length === 0) { 
       setIsPlaying(false); 
       return; 
     }
-
     const playlist = currentFolder.songs;
     const currentIndex = playlist.findIndex(s => s.id === currentSongRef.current?.id);
     const nextSong = playlist[(currentIndex + 1) % playlist.length];
     const nextVideoId = getYouTubeID(nextSong.url);
 
     if (nextVideoId) {
-      userTriggeredPlay.current = true; // 🔥 ALLOW PLAY FOR NEXT TRACK
       playerInstance.loadVideoById(nextVideoId);
       setCurrentSong(nextSong);
       setIsPlaying(true);
@@ -200,35 +185,23 @@ export default function App() {
   };
 
   const handleSelectSong = (song: Song) => {
-    userTriggeredPlay.current = true; // 🔥 MARK AS USER CLICKED ARON MO-PLAY
     const nextId = getYouTubeID(song.url);
     setCurrentSong(song);
     setShowFloatingPlayer(true);
-    
     const player = ytPlayer || ytPlayerRef.current;
-    
     if (player && typeof player.loadVideoById === 'function' && nextId) {
-      try {
-        player.loadVideoById(nextId);
-        player.playVideo();
-        setIsPlaying(true);
-      } catch (error) {
-        console.error("YouTube Player Error:", error);
-      }
+      player.loadVideoById(nextId);
+      player.playVideo();
+      setIsPlaying(true);
     }
   };
 
   const handleTogglePlay = (playState: boolean) => {
-    userTriggeredPlay.current = true; // 🔥 USER INTERACTION ALLOWED
     setIsPlaying(playState);
     const player = ytPlayer || ytPlayerRef.current;
-    
     if (player && typeof player.playVideo === 'function') {
-      if (playState) {
-        player.playVideo();
-      } else {
-        player.pauseVideo();
-      }
+      if (playState) player.playVideo();
+      else player.pauseVideo();
     }
   };
 
@@ -261,14 +234,13 @@ export default function App() {
   const fetchDatabase = useCallback(async () => {
     try {
       const response = await axiosInstance.get('playlists');
-      const dbDataString = JSON.stringify(response.data);
-      if (dbDataString !== lastSavedData.current) {
+      if (JSON.stringify(response.data) !== lastSavedData.current) {
         setFolders(response.data); 
-        lastSavedData.current = dbDataString; 
+        lastSavedData.current = JSON.stringify(response.data); 
       }
       setIsDataLoaded(true);
     } catch (err) { setIsDataLoaded(true); }
-  },[]);
+  }, []);
 
   useEffect(() => { fetchDatabase(); }, [fetchDatabase]);
 
@@ -281,17 +253,16 @@ export default function App() {
     const saveTimer = setTimeout(() => {
       isSavingRef.current = true;
       if (!folders || folders.length === 0) { isSavingRef.current = false; return; }
-      
       axiosInstance.post('playlists/sync', folders).then(() => {
         lastSavedData.current = currentDataString;
         isSavingRef.current = false;
-      }).catch((_err) => {
+      }).catch(() => {
         isSavingRef.current = false;
         fetchDatabase();
       });
     }, 2000);
     return () => clearTimeout(saveTimer);
-  },[folders, isDataLoaded, fetchDatabase]);
+  }, [folders, isDataLoaded, fetchDatabase]);
 
   const handleImportYT = async (yt: any) => {
     let existingFolder = null;
@@ -350,7 +321,7 @@ export default function App() {
           const newSong: Song = { id: Date.now().toString(), title: ytRes.data.title, artist: ytRes.data.author_name, url: targetUrl, lyrics: "", chords: "" };
           setFolders(prev => {
             if (activeFolderId) return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, newSong] } : f);
-            return[...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
+            return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
           });
           setInputValue('');
           Toast.fire({ icon: 'success', title: 'Added!' });
@@ -376,7 +347,7 @@ export default function App() {
 
         const parts = res.data.split('"videoRenderer":{"videoId":"');
         parts.shift(); 
-        const results: any[] =[];
+        const results: any[] = [];
         
         for (const part of parts) {
           if (results.length >= 25) break; 
@@ -391,7 +362,7 @@ export default function App() {
       } catch (err) {} finally { if (!isCancelled) setIsFetching(false); }
     }, 700); 
     return () => { isCancelled = true; clearTimeout(timer); };
-  },[inputValue, searchMode]);
+  }, [inputValue, searchMode]);
 
   useEffect(() => {
     if ('mediaSession' in navigator && currentSong) {
@@ -399,7 +370,7 @@ export default function App() {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentSong.title,
         artist: currentSong.artist || 'Unknown Artist',
-        artwork:[{ src: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' }]
+        artwork: [{ src: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' }]
       });
       navigator.mediaSession.setActionHandler('play', () => handleTogglePlay(true));
       navigator.mediaSession.setActionHandler('pause', () => handleTogglePlay(false));
@@ -447,7 +418,6 @@ export default function App() {
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); setShowFloatingPlayer(false); }} className="no-drag p-2 bg-zinc-800 hover:bg-red-500 rounded-lg text-white transition-colors"><X className="w-3 h-3" /></button>
                 </div>
-
                 <div className="no-drag aspect-video relative bg-black pt-8">
                   <div id="vanilla-yt-player" className="absolute inset-0 w-full h-full pointer-events-none sm:pointer-events-auto"></div>
                 </div>
@@ -459,7 +429,6 @@ export default function App() {
         {!isEasyWorshipPage && currentSong && !showFloatingPlayer && (
           <button onClick={() => setShowFloatingPlayer(true)} className="fixed bottom-44 right-8 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl animate-bounce hover:scale-110 active:scale-95 transition-all" title="Show Video Player"><Tv className="w-6 h-6" /></button>
         )}
-
 
         {!isEasyWorshipPage && (
           <Footer 

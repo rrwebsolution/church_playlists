@@ -181,8 +181,13 @@ export default function Pptpresenatation() {
               {slidesToGenerate.map((slide, index) => (
                 <div key={slide.id} className="flex items-start gap-3 relative group/slide animate-in fade-in slide-in-from-bottom-2">
                   <div className="shrink-0 w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-[11px] font-black text-zinc-400">{index + 1}</div>
-                  <textarea value={slide.text} onChange={(e) => setSlidesToGenerate(prev => prev.map(s => s.id === slide.id ? { ...s, text: e.target.value } : s))} placeholder={`Slide ${index + 1} content...`} className="w-full min-h-40 p-5 bg-white dark:bg-black/40 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none text-zinc-800 dark:text-zinc-100 font-semibold focus:border-indigo-500/50 transition-all leading-relaxed" />
-                  {slidesToGenerate.length > 1 && <button onClick={() => setSlidesToGenerate(prev => prev.filter(s => s.id !== slide.id))} className="absolute top-4 right-4 p-2 text-red-500 hover:bg-red-50 rounded-xl"><Trash2 className="w-4 h-4" /></button>}
+                  <textarea 
+                    value={slide.text} 
+                    onChange={(e) => setSlidesToGenerate(prev => prev.map(s => s.id === slide.id ? { ...s, text: e.target.value } : s))} 
+                    // 🔥 GI-UPDATE NGA PLACEHOLDER PARA SA PPT PRESENTATION 🔥
+                    placeholder={`Slide ${index + 1} Content...\n\nExample:\nMain Heading or Title\n- Key point or sub-topic 1\n- Key point or sub-topic 2\n- Supporting text or scripture`} 
+                    className="w-full min-h-60 p-5 bg-white dark:bg-black/40 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none text-zinc-800 dark:text-zinc-100 font-semibold focus:border-indigo-500/50 transition-all leading-relaxed shadow-sm" 
+                    />
                 </div>
               ))}
             </div>

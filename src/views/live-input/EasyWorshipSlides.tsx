@@ -1,4 +1,4 @@
-import { LayoutGrid, Presentation, FileText } from 'lucide-react';
+import { LayoutGrid, Presentation, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Slide {
   label: string | null;
@@ -25,7 +25,6 @@ const getFontSizeClass = (text: string): string => {
   return 'text-[14px] leading-snug'; 
 };
 
-// 🔥 BAG-ONG FUNCTION: Mohatag og kolor base sa label 🔥
 const getLabelBasedColors = (label: string | null): string => {
   const lowerLabel = label?.toLowerCase() || '';
   
@@ -41,12 +40,31 @@ const getLabelBasedColors = (label: string | null): string => {
   if (lowerLabel.includes('pre-chorus') || lowerLabel.includes('intro') || lowerLabel.includes('outro')) {
     return 'bg-sky-50/70 dark:bg-sky-900/30 border-sky-200 dark:border-sky-800/60';
   }
-  // Default color kung walay label
   return 'bg-white/50 dark:bg-zinc-800/40 border-zinc-200 dark:border-white/10';
 };
 
 
 export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideClick }: SlidesProps) => {
+  
+  // 🔥 LOGIC PARA SA PREV/NEXT BUTTONS 🔥
+  const handlePrevNext = (direction: 'prev' | 'next') => {
+    if (slides.length === 0) return;
+    
+    let currentIndex = liveSlideIndex ?? -1;
+    let nextIndex;
+
+    if (direction === 'next') {
+      nextIndex = currentIndex >= slides.length - 1 ? 0 : currentIndex + 1;
+    } else { // prev
+      nextIndex = currentIndex <= 0 ? slides.length - 1 : currentIndex - 1;
+    }
+
+    if (slides[nextIndex]) {
+      onSlideClick(slides[nextIndex].text, nextIndex);
+    }
+  };
+
+
   return (
     <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border border-zinc-200 dark:border-white/10 rounded-[3rem] p-8 shadow-2xl min-h-150 flex flex-col">
       {/* HEADER SECTION */}
@@ -61,6 +79,24 @@ export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideC
             </h2>
             <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Select a slide to broadcast</p>
           </div>
+        </div>
+
+        {/* 🔥 BAG-ONG PREV/NEXT BUTTONS 🔥 */}
+        <div className="flex items-center gap-2">
+            <button 
+                onClick={() => handlePrevNext('prev')}
+                disabled={slides.length === 0}
+                className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-full border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-90"
+            >
+                <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button 
+                onClick={() => handlePrevNext('next')}
+                disabled={slides.length === 0}
+                className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-full border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-90"
+            >
+                <ChevronRight className="w-5 h-5" />
+            </button>
         </div>
       </div>
 

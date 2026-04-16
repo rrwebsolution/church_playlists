@@ -1,15 +1,17 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { 
   Heart, PlayCircle, PauseCircle, Trash2, 
   RefreshCcw, Share2, Sparkles, Search,
   Languages, Guitar, Play, Copy, Printer, DownloadCloud,
-  ChevronDown,
-  Music
+  ChevronDown, Music
 } from 'lucide-react';
 import type { PlaylistFolder, Song } from '../types';
 import Swal from 'sweetalert2';
-import { PlayingVisualizer } from '../playlist/FolderList';
+import { PlayingVisualizer } from '../playlist/FolderList'; // Ensure this import path is correct
+import { formatLyrics, getCleanLyricsText } from './utils/formatters';
+import { MiniProgressBar } from './saved/MiniProgressBar';
+
 
 // --- TOAST NOTIFICATION CONFIG ---
 const Toast = Swal.mixin({
@@ -20,168 +22,25 @@ const Toast = Swal.mixin({
   timerProgressBar: true,
 });
 
-// --- FORMATTER HELPERS ---
-const formatTime = (seconds: number) => {
-  if (!seconds || isNaN(seconds) || seconds === Infinity) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s < 10 ? '0' : ''}${s}`;
-};
-
-const getCleanLyricsText = (lyrics: string) => {
-  if (!lyrics) return "";
-  const rawLines = lyrics.replace(/&#039;/g, "'").split(/\r?\n/);
-  const result: string[] = [];
-
-  const chordRegex = /^[A-G][b#]?(?:m|maj|min|sus|dim|aug|add|M|alt|7|9|11|13|5|6|b|#|-|\+)*(?:\/[A-G][b#]?)?$/i;
-  const isChordLine = (line: string) => {
-    const words = line.trim().split(/\s+/);
-    if (words.length === 0 || line.trim() === "") return false;
-    let chordCount = 0;
-    words.forEach(word => {
-      const cleanWord = word.replace(/[()]/g, '');
-      if (chordRegex.test(cleanWord) || ["|", "-", "/", "!", "x"].includes(cleanWord)) chordCount++;
-    });
-    return chordCount > 0 && (chordCount / words.length > 0.4);
-  };
-
-  const isHeader = (line: string) => {
-    const tl = line.trim();
-    return /^\[(.*?)\]$/.test(tl) || /^(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Hook|Refrain|Interlude|Tag|Ending|Instrumental|Solo)[\s\d]*:?$/i.test(tl);
-  };
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (line === "") { result.push(""); continue; }
-
-    if (isHeader(line)) {
-      let hasLyricsBelow = false;
-      for (let j = i + 1; j < rawLines.length; j++) {
-        const next = rawLines[j].trim();
-        if (next === "") continue;
-        if (isHeader(next)) break;
-        if (!isChordLine(next)) { hasLyricsBelow = true; break; }
-      }
-      if (hasLyricsBelow) result.push(`\n[${line.replace(/[\[\]():]/g, '')}]\n`);
-      continue;
-    }
-
-    if (!isChordLine(line)) result.push(line);
-  }
-  return result.join('\n').trim();
-};
-
-const formatLyrics = (lyrics: string) => {
-  if (!lyrics) return null;
-  let cleanLyrics = lyrics.replace(/&#039;/g, "'");
-  const rawLines = cleanLyrics.split(/\r?\n/); 
-  const processedLines: any[] = [];
-
-  const chordRegex = /^[A-G][b#]?(?:m|maj|min|sus|dim|aug|add|M|alt|7|9|11|13|5|6|b|#|-|\+)*(?:\/[A-G][b#]?)?$/i;
-
-  const isChordLine = (line: string) => {
-    const words = line.trim().split(/\s+/);
-    if (words.length === 0 || line.trim() === "") return false;
-    let chordCount = 0;
-    words.forEach(word => {
-      const cleanWord = word.replace(/[()]/g, '');
-      if (chordRegex.test(cleanWord) || ["|", "-", "/", "!", "x"].includes(cleanWord)) chordCount++;
-    });
-    return chordCount > 0 && (chordCount / words.length > 0.4);
-  };
-
-  const isHeader = (line: string) => {
-    const tl = line.trim();
-    return /^\[(.*?)\]$/.test(tl) || /^(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Hook|Refrain|Interlude|Tag|Ending|Instrumental|Solo)[\s\d]*:?$/i.test(tl);
-  };
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const currentLine = rawLines[i].trim();
-    if (currentLine === "") { processedLines.push(<div key={i} className="h-4"></div>); continue; }
-
-    if (isHeader(currentLine)) {
-      let hasLyricsBelow = false;
-      for (let j = i + 1; j < rawLines.length; j++) {
-        const nextLine = rawLines[j].trim();
-        if (nextLine === "") continue; 
-        if (isHeader(nextLine)) break; 
-        if (!isChordLine(nextLine)) { hasLyricsBelow = true; break; }
-      }
-      if (hasLyricsBelow) {
-        processedLines.push(
-          <div key={i} className="mt-8 mb-3 flex justify-center">
-            <span className="px-5 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[12px] font-black uppercase tracking-[0.2em] rounded-xl border border-indigo-100 dark:border-indigo-500/20 shadow-sm">
-              {currentLine.replace(/[\[\]():]/g, '')}
-            </span>
-          </div>
-        );
-      }
-      continue; 
-    }
-
-    if (isChordLine(currentLine)) continue;
-
-    processedLines.push(
-      <div key={i} className="text-zinc-800 dark:text-zinc-100 leading-relaxed font-semibold text-[15px] md:text-[17px] py-0.5 text-center">
-        {currentLine}
-      </div>
-    );
-  }
-  return processedLines;
-};
-
-// --- REALTIME PROGRESS BAR COMPONENT ---
-const MiniProgressBar = ({ ytPlayer, isPlaying, isCurrent }: { ytPlayer: any, isPlaying: boolean, isCurrent: boolean }) => {
-  const [playedSec, setPlayedSec] = useState(0);
-  const [duration, setDuration] = useState(0);
-
-  useEffect(() => {
-    if (!isCurrent || !ytPlayer) return;
-    setPlayedSec(0);
-    setDuration(0);
-
-    const interval = setInterval(() => {
-      try {
-        if (typeof ytPlayer.getPlayerState !== 'function') return;
-        const state = ytPlayer.getPlayerState();
-        if (state === 1 || state === 2 || state === 3) {
-          const c = ytPlayer.getCurrentTime();
-          const d = ytPlayer.getDuration();
-          if (c >= 0) setPlayedSec(c);
-          if (d > 0) setDuration(d);
-        }
-      } catch (e) {}
-    }, 500);
-    return () => clearInterval(interval);
-  }, [ytPlayer, isPlaying, isCurrent]);
-
-  if (!isCurrent) return null;
-
-  const progressPercent = duration > 0 ? (playedSec / duration) * 100 : 0;
-
-  return (
-    <div className="flex items-center gap-3 mt-3 mb-1 animate-in fade-in slide-in-from-bottom-1 duration-300">
-      <span className="text-[10px] text-indigo-500 font-mono font-bold w-8">{formatTime(playedSec)}</span>
-      <div className="flex-1 h-1.5 bg-indigo-500/10 dark:bg-zinc-800 rounded-full overflow-hidden">
-        <div className="h-full bg-indigo-500 rounded-full transition-all duration-300 ease-linear shadow-[0_0_10px_rgba(99,102,241,0.5)]" style={{ width: `${progressPercent}%` }} />
-      </div>
-      <span className="text-[10px] text-zinc-500 font-mono font-bold w-8 text-right">{formatTime(duration)}</span>
-    </div>
-  );
-};
+// KONSTANTE PARA SA INITIAL NGA LIMIT SA KANTA
+const INITIAL_SONG_DISPLAY_LIMIT = 9;
 
 // --- MAIN SAVED COMPONENT ---
 export default function Saved() {
   const { 
     folders, setFolders, 
-    currentSong, setCurrentSong, 
+    currentSong, 
     isPlaying, setIsPlaying,
-    inputValue, searchMode, ytPlayer
+    inputValue, searchMode, ytPlayer,
+    selectSong // 🔥 IMPORTANTE: KINI ANG IDUGANG SA OUTLET CONTEXT GIKAN SA APP.TSX
   } = useOutletContext<any>();
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'lyrics' | 'chords'>('lyrics');
+  
+  // STATE PARA PAG-MANAGE KUNG PILA KABUOK KANTA ANG NAKA-DISPLAY
+  const [visibleSongsCount, setVisibleSongsCount] = useState(INITIAL_SONG_DISPLAY_LIMIT);
 
   const allSavedSongs = useMemo(() => {
     const songsMap = new Map<string, Song>();
@@ -204,28 +63,51 @@ export default function Saved() {
     return results;
   }, [folders, searchMode, inputValue]);
 
+  // useEffect PARA I-RESET ANG VISIBLE SONGS KUNG NAAY SEARCH O KUNG MAO NA KINI ANG PAGE
+  useEffect(() => {
+    if (inputValue.trim() !== '') {
+      setVisibleSongsCount(allSavedSongs.length);
+    } else {
+      setVisibleSongsCount(INITIAL_SONG_DISPLAY_LIMIT);
+    }
+  }, [inputValue, allSavedSongs.length]);
+
   const handleSync = () => {
     setIsSyncing(true);
     setTimeout(() => setIsSyncing(false), 1500); 
   };
 
+  // 🔥 GI-AYO NGA handlePlaySong LOGIC 🔥
   const handlePlaySong = (e: React.MouseEvent, song: Song) => {
     e.stopPropagation();
     if (currentSong?.id === song.id) {
-      setIsPlaying(!isPlaying);
+      // Kung parehas ra nga kanta, i-toggle lang ang play/pause
+      setIsPlaying(!isPlaying); 
+      // Ang setIsPlaying sa App.tsx maoy mo-handle sa YouTube player play/pause command
     } else {
-      setCurrentSong(song);
-      setIsPlaying(true);
+      // Kung lahi nga kanta, KINAHANGLAN gamiton ang selectSong gikan sa App.tsx
+      // Kini ang mo-update sa currentSong, setIsPlaying, ug mo-command sa YouTube player.
+      selectSong?.(song); 
     }
   };
 
   const handleRemoveGlobal = (songUrl: string) => {
-    if (confirm("Are you sure you want to remove this song from ALL your folders?")) {
-      setFolders((prev: PlaylistFolder[]) => prev.map(folder => ({
-        ...folder,
-        songs: folder.songs.filter(s => s.url !== songUrl)
-      })));
-    }
+    Swal.fire({
+      title: 'Remove Globally?',
+      text: "This will remove the song from ALL your folders. This action cannot be undone.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      confirmButtonText: 'Yes, remove it',
+    }).then((result) => {
+      if (result.isConfirmed) {
+        setFolders((prev: PlaylistFolder[]) => prev.map(folder => ({
+          ...folder,
+          songs: folder.songs.filter(s => s.url !== songUrl)
+        })));
+        Toast.fire({ icon: 'success', title: 'Song removed globally.' });
+      }
+    });
   };
 
   const toggleExpand = (songId: string, defaultTab: 'lyrics' | 'chords') => {
@@ -237,7 +119,6 @@ export default function Saved() {
     }
   };
 
-  // --- DOWNLOAD & PRINT ---
   const handleDownloadTxt = (song: Song) => {
     const content = activeTab === 'lyrics' ? getCleanLyricsText(song.lyrics || "") : song.chords;
     if (!content) return;
@@ -258,7 +139,19 @@ export default function Saved() {
     if (!printWindow) return;
     
     const formattedContent = activeTab === 'lyrics' 
-      ? content.replace(/\n/g, '<br>').replace(/\[(.*?)\]/g, '<div class="badge">$1</div>')
+      ? (formatLyrics(song.lyrics as string) || []).map((node, _i) => {
+          if (React.isValidElement(node)) {
+            const element = node as React.ReactElement<any, any>;
+            if (element.type === 'div' && element.props.className?.includes('badge')) {
+              return `<div class="badge">${element.props.children}</div>`;
+            }
+            if (element.type === 'div' && element.props.className?.includes('h-4')) {
+              return '<br><br>'; 
+            }
+            return `<div class="lyrics-line">${element.props.children}</div>`;
+          }
+          return node;
+        }).join('')
       : `<pre style="font-family: monospace; font-size: 14px; white-space: pre-wrap;">${content}</pre>`;
 
     printWindow.document.write(`
@@ -329,22 +222,27 @@ export default function Saved() {
       </div>
 
       {/* SONGS GRID & EMPTY STATES */}
-      {folders.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 bg-zinc-50 dark:bg-zinc-900/30 rounded-[3rem] border-2 border-dashed border-zinc-200 dark:border-zinc-800 text-center px-6">
-          <Heart className="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" />
-          <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Your Library is Empty</h3>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 max-w-xs font-medium">
-            Search in the header to start building your personal collection.
-          </p>
-        </div>
-      ) : searchMode === 'local' && allSavedSongs.length === 0 ? (
-        <div className="py-24 text-center bg-zinc-50 dark:bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-200 dark:border-zinc-800">
-          <Search className="w-10 h-10 mx-auto mb-4 text-zinc-400" />
-          <p className="font-semibold uppercase tracking-wider text-zinc-500 text-xs">No matching saved songs found for "{inputValue}"</p>
+      {allSavedSongs.length === 0 ? (
+        <div className={`flex flex-col items-center justify-center py-24 bg-zinc-50 dark:bg-zinc-900/30 rounded-[3rem] border-2 border-dashed border-zinc-200 dark:border-zinc-800 text-center px-6`}>
+          {searchMode === 'local' && inputValue.trim() !== '' ? (
+            <>
+              <Search className="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" />
+              <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">No Songs Found</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 font-medium">No saved songs match "{inputValue}".</p>
+            </>
+          ) : (
+            <>
+              <Heart className="w-12 h-12 text-zinc-300 dark:text-zinc-700 mb-4" />
+              <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Your Library is Empty</h3>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2 max-w-xs font-medium">
+                Search in the header to start building your personal collection.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 items-start">
-          {allSavedSongs.map((song) => {
+          {allSavedSongs.slice(0, visibleSongsCount).map((song) => {
             const isCurrentlyPlaying = currentSong?.id === song.id;
             const isExpanded = expandedId === song.id;
             const isMp3 = !song.url.includes('youtube');
@@ -356,7 +254,7 @@ export default function Saved() {
                   ${isExpanded ? 'lg:col-span-2 xl:col-span-3 rounded-[2.5rem] shadow-2xl z-10 border-indigo-500/50 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-2xl' : 'rounded-[2rem] shadow-sm hover:shadow-xl hover:-translate-y-1 z-0 bg-white/70 dark:bg-zinc-900/80 backdrop-blur-xl border border-zinc-200/50 dark:border-white/5 hover:border-indigo-400/50'}
                   ${isCurrentlyPlaying && !isExpanded ? 'border-indigo-500 shadow-indigo-500/20' : ''}`}
               >
-                {/* CARD HEADER / MAIN INFO */}
+                {/* CARD HEADER */}
                 <div className="relative z-10 flex items-center justify-between p-4 md:p-6 bg-white dark:bg-transparent rounded-t-[1.5rem]">
                   
                   <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -463,20 +361,26 @@ export default function Saved() {
             );
           })}
 
-          {/* DISCOVER MORE BUTTON */}
-          <button 
-            onClick={() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
-            className="relative group p-8 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[2rem] flex flex-col items-center justify-center gap-4 text-zinc-400 hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all duration-500 overflow-hidden h-full min-h-48"
-          >
-            <div className="absolute inset-0 bg-linear-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="p-4 bg-zinc-100 dark:bg-zinc-800 rounded-2xl group-hover:scale-110 group-hover:rotate-90 transition-all duration-500 shadow-sm group-hover:shadow-indigo-500/20 group-hover:bg-indigo-500 group-hover:text-white">
-              <Search className="w-6 h-6" />
+          {/* "SEE ALL" / "SEE LESS" LINK DINHI */}
+          {allSavedSongs.length > INITIAL_SONG_DISPLAY_LIMIT && inputValue.trim() === '' && (
+            <div className="lg:col-span-full xl:col-span-full flex justify-center mt-6">
+              {visibleSongsCount === INITIAL_SONG_DISPLAY_LIMIT ? (
+                <div 
+                  onClick={() => setVisibleSongsCount(allSavedSongs.length)}
+                  className="py-2 px-4 text-center cursor-pointer text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-wider hover:underline transition-colors"
+                >
+                    See All ({allSavedSongs.length - visibleSongsCount} more songs)
+                </div>
+              ) : (
+                <div 
+                  onClick={() => setVisibleSongsCount(INITIAL_SONG_DISPLAY_LIMIT)}
+                  className="py-2 px-4 text-center cursor-pointer text-zinc-500 dark:text-zinc-400 text-[10px] font-black uppercase tracking-wider hover:underline transition-colors"
+                >
+                    See Less
+                </div>
+              )}
             </div>
-            <div className="text-center relative z-10">
-              <span className="block font-black text-sm uppercase tracking-[0.2em] text-zinc-900 dark:text-zinc-50 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-400">Discover More</span>
-              <span className="text-[10px] font-bold text-zinc-500 mt-1 block">Search for new songs above</span>
-            </div>
-          </button>
+          )}
         </div>
       )}
       
@@ -490,7 +394,6 @@ export default function Saved() {
           Realtime Database
         </div>
       </div>
-
     </div>
   );
 }

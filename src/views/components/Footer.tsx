@@ -13,13 +13,11 @@ interface FooterProps {
   ytPlayer?: any; 
   playlistSongs?: Song[];
   onSongChange?: (song: Song) => void;
-  songSelectionTrigger?: number;
   volume: number;
   setVolume: (volume: number) => void;
-  // New props to support iOS/Safari audio unlock flow
-  isSafariOrIos?: boolean;
-  isAudioUnlocked?: boolean;
-  unlockAudio?: () => Promise<void>;
+  // 🔥 DUGANGI KINING DUHA KA PROPS PARA SA APP.TSX 🔥
+  hasInteracted: boolean; // Gikinahanglan para sa TypeScript error
+  isSidebarCollapsed: boolean; // Gikinahanglan para sa width adjustment
 }
 
 const formatTime = (seconds: number) => {
@@ -64,7 +62,10 @@ const formatLyrics = (lyrics: string) => {
 
 const getYTId = (url?: string) => url?.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([^&]{11})/)?.[1] ?? null;
 
-export const Footer = ({ currentSong, isPlaying, setIsPlaying, ytPlayer, playlistSongs = [], onSongChange, volume, setVolume, isSafariOrIos, isAudioUnlocked, unlockAudio }: FooterProps) => {
+export const Footer = ({ 
+  currentSong, isPlaying, setIsPlaying, ytPlayer, playlistSongs = [], onSongChange, volume, setVolume, 
+  isSidebarCollapsed // 🔥 I-DESTRUCTURE ISSIDEBARCOLLAPSED
+}: FooterProps) => {
   const [playedSec, setPlayedSec] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
@@ -73,7 +74,6 @@ export const Footer = ({ currentSong, isPlaying, setIsPlaying, ytPlayer, playlis
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'lyrics' | 'chords'>('lyrics');
   
-  // STATES
   const [isFooterHidden, setIsFooterHidden] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
 
@@ -152,13 +152,9 @@ export const Footer = ({ currentSong, isPlaying, setIsPlaying, ytPlayer, playlis
     }
   };
 
-  const togglePlay = async (e: React.MouseEvent) => {
+  // 🔥 GI-SIMPLIFY ANG TOGGLE PLAY 🔥
+  const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      if (isSafariOrIos && unlockAudio && !isAudioUnlocked) {
-        await unlockAudio();
-      }
-    } catch (_) {}
     setIsPlaying(!isPlaying);
   };
 
@@ -219,18 +215,15 @@ export const Footer = ({ currentSong, isPlaying, setIsPlaying, ytPlayer, playlis
         </button>
       )}
 
-      {/* 
-          GI-UPDATE NAKO KINI: 
-          Gikan sa "fixed" ngadto sa "absolute" aron mo-haom sa right side panel 
-          ug dili mosulod o matabunan sa sidebar. 
-      */}
       <footer 
-        className={`absolute bottom-0 left-0 w-full bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl border-t border-zinc-200 dark:border-zinc-800/50 z-40 transition-all duration-500 ease-in-out shadow-[0_-10px_40px_rgba(0,0,0,0.1)] 
+        className={`fixed bottom-0 left-0 md:left-auto right-0 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl border-t border-zinc-200 dark:border-zinc-800/50 z-40 transition-all duration-500 ease-in-out shadow-[0_-10px_40px_rgba(0,0,0,0.1)] 
         ${isExpanded ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0'}
-        ${isFooterHidden ? 'translate-y-full pointer-events-none' : 'p-2 pt-0 md:p-3 md:px-6 md:py-0 md:h-24'}`}
+        ${isFooterHidden ? 'translate-y-full pointer-events-none' : 'p-2 pt-0 md:p-3 md:px-6 md:py-0 md:h-24'}
+        // 🔥 GI-AYO ANG WIDTH LOGIC 🔥
+        ${isSidebarCollapsed ? 'md:w-[calc(100%-5rem)]' : 'md:w-[calc(100%-16rem)]'} w-full
+        `}
       >
         
-        {/* HIDE BUTTON (MOBILE TOP) */}
         <div 
           className="md:hidden w-full flex justify-center items-center h-8 cursor-pointer active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors rounded-t-2xl pointer-events-auto" 
           onClick={() => setIsFooterHidden(true)}
@@ -238,13 +231,15 @@ export const Footer = ({ currentSong, isPlaying, setIsPlaying, ytPlayer, playlis
           <ChevronDown className="w-6 h-6 text-zinc-400" />
         </div>
 
+        {/* Removed Autoplay Prompt as per previous instruction */}
+
         <div className="hidden md:flex w-full h-full items-center justify-between gap-6 pointer-events-auto">
           <SongInfo />
           <div className="flex flex-col items-center flex-1 max-w-lg gap-1">
             <div className="flex items-center justify-center gap-5">
               <button onClick={(e) => handleSkip10('backward', e)} className="text-zinc-400 hover:text-indigo-600 transition-colors"><RotateCcw className="w-4 h-4" /></button>
               <button onClick={handlePrevious} disabled={!hasSongs} className="p-2 text-zinc-700 dark:text-zinc-300 hover:text-indigo-600 disabled:opacity-30"><SkipBack className="w-6 h-6 fill-current" /></button>
-              <button onClick={togglePlay} disabled={!currentSong} className="w-12 h-12 flex items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg active:scale-90 transition-transform">{(isSafariOrIos && !isAudioUnlocked) ? <Pause className="w-5 h-5 fill-current" /> : (isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current translate-x-0.5" />)}</button>
+              <button onClick={togglePlay} disabled={!currentSong} className="w-12 h-12 flex items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg active:scale-90 transition-transform">{isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current translate-x-0.5" />}</button>
               <button onClick={handleNext} disabled={!hasSongs} className="p-2 text-zinc-700 dark:text-zinc-300 hover:text-indigo-600 disabled:opacity-30"><SkipForward className="w-6 h-6 fill-current" /></button>
               <button onClick={(e) => handleSkip10('forward', e)} className="text-zinc-400 hover:text-indigo-600 transition-colors"><RotateCw className="w-4 h-4" /></button>
             </div>
@@ -287,7 +282,7 @@ export const Footer = ({ currentSong, isPlaying, setIsPlaying, ytPlayer, playlis
           <div className="flex items-center justify-center gap-8 pb-1">
              <button onClick={(e) => handleSkip10('backward', e)} className="text-zinc-400 active:text-indigo-600"><RotateCcw className="w-5 h-5" /></button>
              <SkipBack onClick={handlePrevious} className="w-7 h-7 text-zinc-700 dark:text-zinc-300" />
-             <button onClick={togglePlay} className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg">{(isSafariOrIos && !isAudioUnlocked) ? <Pause className="w-7 h-7 fill-current" /> : (isPlaying ? <Pause className="w-7 h-7 fill-current" /> : <Play className="w-7 h-7 fill-current translate-x-0.5" />)}</button>
+             <button onClick={togglePlay} className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg">{isPlaying ? <Pause className="w-7 h-7 fill-current" /> : <Play className="w-7 h-7 fill-current translate-x-0.5" />}</button>
              <SkipForward onClick={handleNext} className="w-7 h-7 text-zinc-700 dark:text-zinc-300" />
              <button onClick={(e) => handleSkip10('forward', e)} className="text-zinc-400 active:text-indigo-600"><RotateCw className="w-5 h-5" /></button>
           </div>
@@ -319,7 +314,7 @@ export const Footer = ({ currentSong, isPlaying, setIsPlaying, ytPlayer, playlis
             <div className="flex items-center justify-center gap-10">
               <RotateCcw onClick={(e) => handleSkip10('backward', e)} className="w-7 h-7 text-zinc-400 hover:text-white cursor-pointer" />
               <SkipBack onClick={handlePrevious} className="w-10 h-10 text-zinc-400 hover:text-white cursor-pointer" />
-              <button onClick={togglePlay} className="w-20 h-20 bg-white text-black rounded-full flex items-center justify-center shadow-2xl hover:scale-105 transition-all">{(isSafariOrIos && !isAudioUnlocked) ? <Pause className="w-8 h-8 fill-current" /> : (isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current translate-x-1" />)}</button>
+              <button onClick={togglePlay} className="w-20 h-20 bg-white text-black rounded-full flex items-center justify-center shadow-2xl hover:scale-105 transition-all">{isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current translate-x-1" />}</button>
               <SkipForward onClick={handleNext} className="w-10 h-10 text-zinc-400 hover:text-white cursor-pointer" />
               <RotateCw onClick={(e) => handleSkip10('forward', e)} className="w-7 h-7 text-zinc-400 hover:text-white cursor-pointer" />
             </div>
@@ -327,7 +322,7 @@ export const Footer = ({ currentSong, isPlaying, setIsPlaying, ytPlayer, playlis
         </div>
         <div className="flex-1 overflow-y-auto w-full md:w-auto md:h-full z-10 bg-black/40 md:border-l border-white/5 pb-24 md:pb-10 pt-6 md:pt-24 px-4 md:px-12 custom-scrollbar">
           <div className="max-w-2xl mx-auto">
-            {currentSong && (activeTab === 'lyrics' ? (currentSong.lyrics ? formatLyrics(currentSong.lyrics) : <div className="text-center text-zinc-500 py-20">No Lyrics Found</div>) : (currentSong.chords ? <pre className="font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed">{currentSong.chords}</pre> : <div className="text-center text-zinc-500 py-20">No Chords Found</div>))}
+            {currentSong && (activeTab === 'lyrics' ? (currentSong.lyrics ? formatLyrics(currentSong.lyrics) : <div className="text-center text-zinc-500 py-20">No Lyrics Found</div>) : (currentSong.chords ? <pre className="font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed p-4 bg-white/50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-200/50 dark:border-white/5">{currentSong.chords}</pre> : <div className="text-center text-zinc-500 py-20">No Chords Found</div>))}
           </div>
         </div>
       </div>

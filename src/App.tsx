@@ -32,6 +32,16 @@ const getYouTubeID = (url: string | undefined | null) => {
   return (match && match[1]) ? match[1] : null;
 };
 
+// BAG-ONG TYPES PARA SA PPT PRESENTATIONS (Gi-move na ni sa App.tsx)
+export interface PptPresentationFile {
+  id: string;
+  name: string;
+  slidesCount: number;
+  uploadedAt: string;
+  thumbnailUrl?: string;
+  sourceText?: string;
+}
+
 export default function App() {
   const location = useLocation();
 
@@ -78,6 +88,22 @@ export default function App() {
   const isSavingRef = useRef(false);
   const nodeRef = useRef(null);
 
+  // STATE PARA SA SIDEBAR COLLAPSED
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+      return localStorage.getItem('sidebar_collapsed') === 'true';
+  });
+
+  // BAG-ONG STATE SA APP.TSX PARA SA PPT PRESENTATIONS
+  const [presentations, setPresentations] = useState<PptPresentationFile[]>(() => {
+    const saved = localStorage.getItem('jamc_ppt_presentations');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_ppt_presentations', JSON.stringify(presentations));
+  }, [presentations]);
+
+
   useEffect(() => {
     const ua = navigator.userAgent;
     const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -101,7 +127,6 @@ export default function App() {
 
   useEffect(() => { setIsClient(true); }, []);
 
-  // --- 🔥 YOUTUBE PLAYER (FORCED AUTOPLAY) 🔥 ---
   const initPlayer = useCallback(() => {
     const container = document.getElementById('vanilla-yt-player');
     if (!container) return; 
@@ -378,7 +403,12 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden relative">
-      <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} />
+      <Sidebar 
+        isSidebarOpen={isSidebarOpen} 
+        setIsSidebarOpen={setIsSidebarOpen} 
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
+      />
       
       <div className="flex-1 flex flex-col min-w-0 relative">
         <Header 
@@ -398,6 +428,8 @@ export default function App() {
                 currentSong, setCurrentSong, selectSong: handleSelectSong, setIsPlaying: handleTogglePlay, isPlaying, 
                 isAutoPlayNextEnabled, setIsAutoPlayNextEnabled, inputValue, setInputValue, 
                 searchMode, setSearchMode, playHistory, setPlayHistory, ytPlayer, handleClearHistory,
+                // IDUGANG ANG PPT STATES SA CONTEXT
+                presentations, setPresentations
               }} 
             />
           </div>
@@ -436,6 +468,8 @@ export default function App() {
             onSongChange={handleSelectSong} 
             volume={volume} 
             setVolume={setVolume} 
+            hasInteracted={true} 
+            isSidebarCollapsed={isSidebarCollapsed} // 🔥 I-PASA ANG isSidebarCollapsed
           />
         )}
       </div>

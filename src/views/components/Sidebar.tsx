@@ -1,33 +1,34 @@
 import { 
   X, Folder, Bookmark, History, Settings, 
-  ChevronLeft, ChevronRight, Presentation
+  ChevronLeft, ChevronRight, Presentation, MonitorDot 
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 
 interface SidebarProps {
   isSidebarOpen: boolean;
   setIsSidebarOpen: (open: boolean) => void;
+  isCollapsed: boolean; 
+  setIsCollapsed: (collapsed: boolean) => void;
 }
 
-export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen }: SidebarProps) => {
+export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, isCollapsed, setIsCollapsed }: SidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    return localStorage.getItem('sidebar_collapsed') === 'true';
-  });
-
   useEffect(() => {
-    localStorage.setItem('sidebar_collapsed', isCollapsed.toString());
+    // 🔥 FIX: Siguraduhon nga ang isCollapsed kay boolean sa dili pa i-save
+    // Ang `String(!!isCollapsed)` nagsiguro nga bisan og undefined/null ang isCollapsed,
+    // mahimo gihapon kining "true" o "false" string.
+    localStorage.setItem('sidebar_collapsed', String(!!isCollapsed));
   }, [isCollapsed]);
 
   const menuItems = [
     { id: 'playlist', path: '/app/playlist', label: 'My Playlists', icon: Folder },
     { id: 'saved', path: '/app/saved', label: 'Saved Songs', icon: Bookmark },
     { id: 'history', path: '/app/history', label: 'History', icon: History },
-    // --- GINGANLAN NA OG EASYWORSHIP ---
     { id: 'easyworship', path: '/app/easyworship', label: 'EasyWorship', icon: Presentation },
+    { id: 'ppt-presentation', path: '/app/ppt-presentation', label: 'PPT Presentation', icon: MonitorDot },
     { id: 'settings', path: '/app/settings', label: 'Settings', icon: Settings },
   ];
 

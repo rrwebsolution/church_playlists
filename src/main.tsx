@@ -15,6 +15,12 @@ const Settings = lazy(() => import('./views/settings/Settings.tsx'));
 const EasyWorshipController = lazy(() => import('./views/live-input/EasyWorshipController.tsx'));
 const EasyWorshipView = lazy(() => import('./views/projector/EasyWorshipView.tsx'));
 
+// 🔥 GI-AYO ANG IMPORT PATH SA PPTPRESENTATION (Kung gi-change ang folder name)
+// 🔥 UG GI-IMPORT ANG BAG-ONG PPTVIEWER 🔥
+const Pptpresenatation = lazy(() => import('./views/ppt/Pptpresenatation.tsx'));
+const PptViewer = lazy(() => import('./views/ppt/ppt-presentation/PptViewer.tsx'));
+
+
 const routes = [
   {
     path: '/',
@@ -69,6 +75,23 @@ const routes = [
         element: (
           <Suspense fallback={<Loader />}>
             <EasyWorshipController />
+          </Suspense>
+        )
+      },
+      // 🔥 BAG-ONG MGA ROUTES PARA SA PPT PRESENTATION 🔥
+      {
+        path: 'ppt-presentation', // Parent route for the list
+        element: (
+          <Suspense fallback={<Loader />}>
+            <Pptpresenatation />
+          </Suspense>
+        )
+      },
+      {
+        path: 'ppt-presentation/:id', // Route for the individual viewer
+        element: (
+          <Suspense fallback={<Loader />}>
+            <PptViewer />
           </Suspense>
         )
       },

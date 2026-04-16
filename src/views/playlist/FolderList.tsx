@@ -43,14 +43,13 @@ export default function FolderList({
   isPlaying, inputValue 
 }: any) {
 
-  // KINI DAPAT NAA SA BABAW (Top-Level)
   const navigate = useNavigate();
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest'); 
+  const[sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest'); 
   
-  const [isCreating, setIsCreating] = useState(false);
+  const[isCreating, setIsCreating] = useState(false);
   const [createValue, setCreateValue] = useState('');
 
   const groupedFolders = useMemo(() => {
@@ -66,9 +65,9 @@ export default function FolderList({
 
     const groups: Record<string, PlaylistFolder[]> = {
       'Today': [],
-      'This Week': [],
+      'This Week':[],
       'Last Week': [],
-      'Older': []
+      'Older':[]
     };
 
     const now = new Date();
@@ -86,7 +85,7 @@ export default function FolderList({
     });
 
     return groups;
-  }, [folders, inputValue, sortOrder]);
+  },[folders, inputValue, sortOrder]);
 
   const hasSearchResults = Object.values(groupedFolders).some(group => group.length > 0);
 
@@ -99,7 +98,7 @@ export default function FolderList({
     const newFolder: any = { 
       id: Date.now().toString(), 
       name: trimmedValue, 
-      songs: [],
+      songs:[],
       created_at: new Date().toISOString()
     };
     setFolders((prev: PlaylistFolder[]) => [newFolder, ...prev]);
@@ -191,12 +190,12 @@ export default function FolderList({
       {/* TOP GRID: CREATE FOLDER & LET'S GO BANNER */}
       <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
 
-         {/* RIGHT: LET'S GO BANNER (MINIMALIST VERSION) */}
-        <div className="lg:col-span-2 xl:col-span-3 relative overflow-hidden flex flex-col sm:flex-row items-center justify-between p-6 md:p-8 rounded-[2rem] bg-white/30 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-800 backdrop-blur-md transition-all duration-500 group">
+         {/* RIGHT: LET'S GO BANNER WITH ENHANCED LABELS */}
+        <div className="lg:col-span-2 xl:col-span-3 relative overflow-hidden flex flex-col xl:flex-row items-center justify-between p-6 md:p-8 rounded-[2rem] bg-white/30 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-800 backdrop-blur-md transition-all duration-500 group">
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
 
-          <div className="relative z-10 mb-8 sm:mb-0 sm:mr-6 text-center sm:text-left flex-1">
-            <h2 className="text-2xl md:text-3xl font-black tracking-tight flex items-center justify-center sm:justify-start gap-3 mb-2 text-zinc-900 dark:text-white">
+          <div className="relative z-10 mb-8 xl:mb-0 xl:mr-6 text-center xl:text-left flex-1">
+            <h2 className="text-2xl md:text-3xl font-black tracking-tight flex items-center justify-center xl:justify-start gap-3 mb-2 text-zinc-900 dark:text-white">
               <Sparkles className="w-6 h-6 text-amber-500" /> Let's Go!
             </h2>
             <p className="text-zinc-500 dark:text-zinc-400 text-sm md:text-[15px] font-medium max-w-md leading-relaxed">
@@ -204,19 +203,23 @@ export default function FolderList({
             </p>
           </div>
 
-          <div className="relative z-10 flex flex-col xs:flex-row sm:flex-col lg:flex-row gap-3 w-full sm:w-auto shrink-0">
+          {/* 🔥 GI-UPGRADE NGA MGA LABELS (CREATE, ADD, WORSHIP) 🔥 */}
+          <div className="relative z-10 flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
             {[
-              { icon: FolderPlus, label: "Create" },
-              { icon: Search, label: "Add" },
-              { icon: Play, label: "Worship" }
+              { icon: FolderPlus, label: "Create", sub: "Playlists" },
+              { icon: Search, label: "Add", sub: "Songs" },
+              { icon: Play, label: "Worship", sub: "Seamlessly" }
             ].map((step, i) => (
-              <div key={i} className="flex items-center gap-3.5 bg-zinc-100/50 dark:bg-zinc-800/40 border border-zinc-200/50 dark:border-zinc-700/50 px-4 py-3.5 rounded-2xl hover:border-indigo-500/50 transition-colors cursor-default group/step">
-                <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-md shrink-0">
+              <div key={i} className="flex flex-1 xl:flex-none items-center gap-4 bg-white/60 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 px-5 py-3.5 rounded-2xl hover:border-indigo-500 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 cursor-default group/step">
+                <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-[15px] shadow-inner shrink-0 group-hover/step:bg-indigo-600 group-hover/step:text-white transition-all">
                   {i + 1}
                 </div>
-                <div className="flex items-center gap-2">
-                  <step.icon className="w-4 h-4 text-zinc-400 group-hover/step:text-indigo-500 transition-colors" />
-                  <span className="font-bold text-[11px] uppercase tracking-widest text-zinc-600 dark:text-zinc-300">{step.label}</span>
+                <div className="flex flex-col text-left">
+                  <div className="flex items-center gap-1.5">
+                    <step.icon className="w-3.5 h-3.5 text-zinc-400 group-hover/step:text-indigo-500 transition-colors" />
+                    <span className="font-black text-[13px] uppercase tracking-widest text-zinc-800 dark:text-zinc-100">{step.label}</span>
+                  </div>
+                  <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{step.sub}</span>
                 </div>
               </div>
             ))}
@@ -331,7 +334,6 @@ export default function FolderList({
                     <div
                       key={folder.id}
                       onClick={() => {
-                        // SAKTONG NAVIGATION LOGIC (dili mo-navigate kung nag-edit)
                         if (!isEditingThis) {
                           setActiveFolderId(folder.id);
                           navigate(`/app/playlist/${folder.id}`);

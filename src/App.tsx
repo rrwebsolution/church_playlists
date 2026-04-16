@@ -38,11 +38,11 @@ export default function App() {
 
   const isEasyWorshipPage = location.pathname.includes('/app/easyworship');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [searchMode, setSearchMode] = useState<'youtube' | 'link' | 'local'>('youtube');
-  const [inputValue, setInputValue] = useState('');
+  const[searchMode, setSearchMode] = useState<'youtube' | 'link' | 'local'>('youtube');
+  const[inputValue, setInputValue] = useState('');
   const [isFetching, setIsFetching] = useState(false);
   const [youtubeResults, setYoutubeResults] = useState<any[]>([]);
-  const [importingId, setImportingId] = useState<string | null>(null);
+  const[importingId, setImportingId] = useState<string | null>(null);
 
   const [folders, setFolders] = useState<PlaylistFolder[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false); 
@@ -68,7 +68,7 @@ export default function App() {
   const [bgPlayEnabled, setBgPlayEnabled] = useState(true);
   const [playHistory, setPlayHistory] = useState<any[]>(() => {
     const saved = localStorage.getItem('jamc_history');
-    return saved ? JSON.parse(saved) : [];
+    return saved ? JSON.parse(saved) :[];
   });
   
   const [showFloatingPlayer, setShowFloatingPlayer] = useState(true);
@@ -85,13 +85,11 @@ export default function App() {
     const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
 
-    // Kung iOS o Safari, i-default nato nga naka-ICON (TV icon) ra una
     if (isIOS || isSafari) {
       setShowFloatingPlayer(false);
     }
-  }, []);
+  },[]);
 
-  // REFS PARA MA-ACCESS SA VANILLA JS CALLBACKS NGA DILI STALE
   const currentSongRef = useRef<Song | null>(currentSong);
   const foldersRef = useRef<PlaylistFolder[]>(folders);
   const autoPlayRef = useRef<boolean>(isAutoPlayNextEnabled);
@@ -104,18 +102,17 @@ export default function App() {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  },[]);
 
-  useEffect(() => { setIsClient(true); }, []);
+  useEffect(() => { setIsClient(true); },[]);
 
   // --- 🔥 VANILLA JS YOUTUBE PLAYER INITIALIZATION 🔥 ---
   const initPlayer = useCallback(() => {
     const container = document.getElementById('vanilla-yt-player');
-    if (!container) return; // Ayaw i-run kung wala pa ang div sa DOM
+    if (!container) return; 
 
     const initialId = getYouTubeID(currentSongRef.current?.url) || '';
 
-    // Siguroha nga dili mag-duplicate ang player
     if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
       try { ytPlayerRef.current.destroy(); } catch (e) {}
     }
@@ -123,7 +120,7 @@ export default function App() {
     ytPlayerRef.current = new window.YT.Player('vanilla-yt-player', {
       videoId: initialId,
       playerVars: {
-        autoplay: 1, // Automatic Play
+        autoplay: 1, 
         playsinline: 1,
         controls: 1,
         rel: 0,
@@ -131,9 +128,11 @@ export default function App() {
       },
       events: {
         onReady: (event: any) => {
+          // 🔥 KINI IMPORTANTE KAAYO: I-save ang tinuod nga player object aron mo-function ang playVideo()
+          ytPlayerRef.current = event.target; 
           setYtPlayer(event.target);
           event.target.setVolume(Math.round(volume * 100));
-          // Kung naa nay song inig ready, i-play dayon
+          
           if (initialId) {
             event.target.playVideo();
             setIsPlaying(true);
@@ -153,29 +152,27 @@ export default function App() {
   useEffect(() => {
     if (!isClient) return;
 
-    // Load ang script sa YouTube API (Vanilla JS way)
     if (!window.YT) {
       const tag = document.createElement('script');
-      tag.src = "https://www.youtube.com/iframe_api";
+      tag.src = "https://www.youtube.com/iframe_api"; // 🔥 GI-AYO ANG NAPUTOL NGA URL
       const firstScriptTag = document.getElementsByTagName('script')[0];
       firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
 
       window.onYouTubeIframeAPIReady = () => {
-        setTimeout(initPlayer, 500); // Tagaan og half-second ang React mo-render sa div
+        setTimeout(initPlayer, 500); 
       };
     } else {
       setTimeout(initPlayer, 500);
     }
   }, [isClient, initPlayer]);
 
-  // Siguruhon nga ma-initialize ang player kung naay gi-click nga kanta pero wala pay player
   useEffect(() => {
     if (currentSong && !ytPlayer && window.YT) {
       setTimeout(initPlayer, 500);
     }
   }, [currentSong, ytPlayer, initPlayer]);
 
-  // --- 🔥 VANILLA JS AUTO-NEXT LOGIC (WALAY LABOT ANG REACT STATE) 🔥 ---
+  // --- AUTO-NEXT LOGIC ---
   const handleVanillaSongEnded = (playerInstance: any) => {
     if (!autoPlayRef.current) { 
       setIsPlaying(false); 
@@ -194,50 +191,57 @@ export default function App() {
     const nextVideoId = getYouTubeID(nextSong.url);
 
     if (nextVideoId) {
-      // 1. DIRECT DOM COMMAND: Kini ang mopabiling abli sa audio gate sa iOS
       playerInstance.loadVideoById(nextVideoId);
-      
-      // 2. I-sync na lang nato ang UI sa React para mausab ang text
       setCurrentSong(nextSong);
       setIsPlaying(true);
     }
   };
 
-  // --- MANUAL SONG SELECTION FROM UI ---
+  // --- MANUAL SONG SELECTION ---
   const handleSelectSong = (song: Song) => {
     const nextId = getYouTubeID(song.url);
-    
-    // 1. I-set daan ang kanta sa React State
     setCurrentSong(song);
     setShowFloatingPlayer(true);
     
-    // 2. I-pasa ang command sa Vanilla JS Player
-    if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function' && nextId) {
+    // 🔥 GAMITON ANG SAKTO NGA REFERENCE
+    const player = ytPlayer || ytPlayerRef.current;
+    
+    if (player && typeof player.loadVideoById === 'function' && nextId) {
       try {
-        ytPlayerRef.current.loadVideoById(nextId);
-        ytPlayerRef.current.playVideo();
-        setIsPlaying(true); // I-sync ang play state
+        player.loadVideoById(nextId);
+        player.playVideo();
+        setIsPlaying(true);
       } catch (error) {
         console.error("YouTube Player Error:", error);
       }
-    } else {
-      console.warn("YouTube Player is not yet ready or method is missing.");
     }
   };
 
+  // --- 🔥 GI-UPDATE NGA TOGGLE PLAY LOGIC ---
   const handleTogglePlay = (playState: boolean) => {
     setIsPlaying(playState);
-    if (ytPlayerRef.current) {
-      if (playState) ytPlayerRef.current.playVideo();
-      else ytPlayerRef.current.pauseVideo();
+    
+    // Gamiton ang sigurado nga reference sa player gikan sa state o sa ref
+    const player = ytPlayer || ytPlayerRef.current;
+    
+    if (player && typeof player.playVideo === 'function') {
+      if (playState) {
+        player.playVideo();
+      } else {
+        player.pauseVideo();
+      }
+    } else {
+      console.warn("YouTube Player is not yet ready to play.");
     }
   };
 
   // Volume Sync
   useEffect(() => { 
-    if (ytPlayerRef.current) try { ytPlayerRef.current.setVolume(Math.round(volume * 100)); } catch (e) {} 
-  }, [volume]);
-
+    const player = ytPlayer || ytPlayerRef.current;
+    if (player && typeof player.setVolume === 'function') {
+        try { player.setVolume(Math.round(volume * 100)); } catch (e) {} 
+    }
+  },[volume, ytPlayer]);
 
   // UPDATE HISTORY & LOCAL STORAGE
   useEffect(() => {
@@ -245,7 +249,7 @@ export default function App() {
       setPlayHistory(prev => {
         if (prev.length > 0 && prev[0].song.id === currentSong.id) return prev;
         const newLog = { id: Date.now().toString(), song: currentSong, playedAt: new Date().toISOString() };
-        const updatedHistory = [newLog, ...prev].slice(0, 50);
+        const updatedHistory =[newLog, ...prev].slice(0, 50);
         localStorage.setItem('jamc_history', JSON.stringify(updatedHistory));
         return updatedHistory;
       });
@@ -269,7 +273,7 @@ export default function App() {
       }
       setIsDataLoaded(true);
     } catch (err) { setIsDataLoaded(true); }
-  }, []);
+  },[]);
 
   useEffect(() => { fetchDatabase(); }, [fetchDatabase]);
 
@@ -318,7 +322,7 @@ export default function App() {
       if (activeFolderId) return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, newSong] } : f);
       const defaultIndex = prev.findIndex(f => f.name === "Saved Library" || f.name === "Uncategorized");
       if (defaultIndex !== -1) { const updated = [...prev]; updated[defaultIndex].songs.push(newSong); return updated; } 
-      else return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
+      else return[...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
     });
     
     setImportingId(null);
@@ -337,7 +341,7 @@ export default function App() {
       try {
         let videoId = getYouTubeID(query);
         if (videoId) {
-          const targetUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          const targetUrl = `https://www.youtube.com/watch?v=${videoId}`; // 🔥 GI-AYO ANG NAPUTOL NGA URL
           let existingFolder = null;
           const isDuplicateGlobally = folders.some(folder => {
             const exists = folder.songs.some(s => s.url === targetUrl);
@@ -352,7 +356,7 @@ export default function App() {
           const newSong: Song = { id: Date.now().toString(), title: ytRes.data.title, artist: ytRes.data.author_name, url: targetUrl, lyrics: "", chords: "" };
           setFolders(prev => {
             if (activeFolderId) return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, newSong] } : f);
-            return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
+            return[...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
           });
           setInputValue('');
           Toast.fire({ icon: 'success', title: 'Added!' });
@@ -371,14 +375,14 @@ export default function App() {
     const timer = setTimeout(async () => {
       setIsFetching(true);
       try {
-        const ytSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(inputValue.trim())}`;
+        const ytSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(inputValue.trim())}`; // 🔥 GI-AYO ANG NAPUTOL NGA URL
         const res = await axios.get(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(ytSearchUrl)}`)
           .catch(() => axios.get(`https://api.allorigins.win/raw?url=${encodeURIComponent(ytSearchUrl)}`));
         if (isCancelled) return; 
 
         const parts = res.data.split('"videoRenderer":{"videoId":"');
         parts.shift(); 
-        const results: any[] = [];
+        const results: any[] =[];
         
         for (const part of parts) {
           if (results.length >= 25) break; 
@@ -387,7 +391,7 @@ export default function App() {
           const title = titleMatch ? titleMatch[1].replace(/\\u0026/g, '&').replace(/\\"/g, '"') : "Unknown";
           const authorMatch = part.match(/"ownerText":\{"runs":\[\{"text":"([^"]+)"/);
           const author = authorMatch ? authorMatch[1].replace(/\\u0026/g, '&').replace(/\\"/g, '"') : "Unknown";
-          if (!results.some(r => r.videoId === videoId)) results.push({ videoId, title, author, url: `https://www.youtube.com/watch?v=${videoId}` });
+          if (!results.some(r => r.videoId === videoId)) results.push({ videoId, title, author, url: `https://www.youtube.com/watch?v=${videoId}` }); // 🔥 GI-AYO ANG NAPUTOL NGA URL
         }
         if (!isCancelled) setYoutubeResults(results);
       } catch (err) {} finally { if (!isCancelled) setIsFetching(false); }
@@ -402,14 +406,13 @@ export default function App() {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: currentSong.title,
         artist: currentSong.artist || 'Unknown Artist',
-        artwork: [{ src: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' }]
+        artwork:[{ src: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, sizes: '480x360', type: 'image/jpeg' }]
       });
       navigator.mediaSession.setActionHandler('play', () => handleTogglePlay(true));
       navigator.mediaSession.setActionHandler('pause', () => handleTogglePlay(false));
-      // Ang auto-next logic natong gi-himo sa Vanilla JS tawgon pud inig click niya sa next sa lockscreen
       navigator.mediaSession.setActionHandler('nexttrack', () => handleVanillaSongEnded(ytPlayerRef.current));
     }
-  }, [currentSong]);
+  }, [currentSong, ytPlayer]);
 
   const currentActiveMenu = location.pathname.includes('playlist') ? 'folders' : location.pathname.includes('saved') ? 'saved' : 'home';
 
@@ -427,7 +430,6 @@ export default function App() {
           onImportYT={handleImportYT} importingId={importingId}
         />
         
-        {/* GI-ADJUST ANG PADDING: Kung EasyWorship, wala nay pb-32 para dili dako og space sa ubos */}
         <main className={`flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-950/50 relative ${isEasyWorshipPage ? 'pb-8' : 'pb-32'}`}>
           <div className="mx-auto p-4 md:p-8">
             <Outlet 
@@ -441,7 +443,6 @@ export default function App() {
           </div>
         </main>
 
-        {/* DRAGGABLE FLOATING PLAYER - Gi-hide via CSS (display none) imbis i-unmount para di mamatay ang Player inig EasyWorship */}
         {isClient && currentSong && (
           <div style={{ display: isEasyWorshipPage ? 'none' : 'block' }}>
             <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".no-drag" bounds="parent" disabled={!isMobile}>
@@ -462,18 +463,20 @@ export default function App() {
           </div>
         )}
 
-        {/* TV ICON BUTTON - MOGAWAS RA KUNG DILI EASYWORSHIP PAGE */}
         {!isEasyWorshipPage && currentSong && !showFloatingPlayer && (
           <button onClick={() => setShowFloatingPlayer(true)} className="fixed bottom-44 right-8 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl animate-bounce hover:scale-110 active:scale-95 transition-all" title="Show Video Player"><Tv className="w-6 h-6" /></button>
         )}
 
-        {/* FOOTER - MOGAWAS RA KUNG DILI EASYWORSHIP PAGE */}
         {!isEasyWorshipPage && (
           <Footer 
-            currentSong={currentSong} isPlaying={isPlaying} setIsPlaying={handleTogglePlay} ytPlayer={ytPlayer} 
-            playlistSongs={currentSong ? folders.find(f => f.songs.some(s => s.id === currentSong.id))?.songs || [] : []} 
+            currentSong={currentSong} 
+            isPlaying={isPlaying} 
+            setIsPlaying={handleTogglePlay} 
+            ytPlayer={ytPlayer} 
+            playlistSongs={currentSong ? folders.find(f => f.songs.some(s => s.id === currentSong.id))?.songs || [] : []}
             onSongChange={handleSelectSong} 
-            volume={volume} setVolume={setVolume} 
+            volume={volume} 
+            setVolume={setVolume} 
           />
         )}
       </div>

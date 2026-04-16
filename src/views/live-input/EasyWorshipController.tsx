@@ -212,7 +212,7 @@ export default function EasyWorshipController() {
         </Draggable>
       )}
 
-      <div className="grid grid-cols-2 gap-8 items-start w-full mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start w-full mx-auto">
         <div className="w-full">
           <EasyWorshipEditor 
             title={inputTitle} text={inputText} isOutputCleared={liveText === ""} 

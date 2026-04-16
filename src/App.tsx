@@ -125,34 +125,40 @@ export default function App() {
       initPlayer();
     }
 
-    function initPlayer() {
-      const initialId = getYouTubeID(currentSongRef.current?.url) || '';
+    // Sulod sa imong Player Initialization logic sa App.tsx
+function initPlayer() {
+  const initialId = getYouTubeID(currentSongRef.current?.url) || '';
 
-      ytPlayerRef.current = new window.YT.Player('vanilla-yt-player', {
-        videoId: initialId,
-        playerVars: {
-          autoplay: 1,
-          playsinline: 1, // KINI ANG SIKRETO SA IOS
-          controls: 1,
-          rel: 0,
-          origin: window.location.origin,
-        },
-        events: {
-          onReady: (event: any) => {
-            setYtPlayer(event.target); // Ipasa sa footer para maka-control sa volume
-          },
-          onStateChange: (event: any) => {
-            if (event.data === window.YT.PlayerState.PLAYING) setIsPlaying(true);
-            if (event.data === window.YT.PlayerState.PAUSED) setIsPlaying(false);
-            
-            // KUNG HUMAN NA ANG KANTA (STATE === 0)
-            if (event.data === window.YT.PlayerState.ENDED) {
-              handleVanillaSongEnded(event.target);
-            }
-          }
+  // Siguroha nga dili mag-duplicate ang player
+  if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+    ytPlayerRef.current.destroy();
+  }
+
+  ytPlayerRef.current = new window.YT.Player('vanilla-yt-player', {
+    videoId: initialId,
+    playerVars: {
+      autoplay: 1,
+      playsinline: 1,
+      controls: 1,
+      rel: 0,
+      origin: window.location.origin,
+    },
+    events: {
+      onReady: (event: any) => {
+        setYtPlayer(event.target);
+        // Pwede nimo i-set ang volume diri para sigurado
+        event.target.setVolume(Math.round(volume * 100));
+      },
+      onStateChange: (event: any) => {
+        if (event.data === window.YT.PlayerState.PLAYING) setIsPlaying(true);
+        if (event.data === window.YT.PlayerState.PAUSED) setIsPlaying(false);
+        if (event.data === window.YT.PlayerState.ENDED) {
+          handleVanillaSongEnded(event.target);
         }
-      });
+      }
     }
+  });
+}
   }, [isClient]);
 
   // --- 🔥 VANILLA JS AUTO-NEXT LOGIC (WALAY LABOT ANG REACT STATE) 🔥 ---
@@ -185,18 +191,30 @@ export default function App() {
 
   // --- MANUAL SONG SELECTION FROM UI ---
   const handleSelectSong = (song: Song) => {
-    const nextId = getYouTubeID(song.url);
-    
-    // Imbes nga usbon ang React prop, padad-an nato og command ang Vanilla JS player
-    if (ytPlayerRef.current && nextId) {
+  const nextId = getYouTubeID(song.url);
+  
+  // GI-UPDATE: Butangan nato og typeof check para sigurado nga ready na ang API methods
+  if (
+    ytPlayerRef.current && 
+    typeof ytPlayerRef.current.loadVideoById === 'function' && 
+    nextId
+  ) {
+    try {
       ytPlayerRef.current.loadVideoById(nextId);
       ytPlayerRef.current.playVideo();
+    } catch (error) {
+      console.error("YouTube Player Error:", error);
     }
-    
-    setCurrentSong(song);
-    setShowFloatingPlayer(true);
-    setIsPlaying(true);
-  };
+  } else {
+    // Kung dili pa ready ang player, i-save lang gihapon ang song state
+    // aron inig load sa player, mao na ni ang iyang dulaon.
+    console.warn("YouTube Player is not yet ready or method is missing.");
+  }
+  
+  setCurrentSong(song);
+  setShowFloatingPlayer(true);
+  setIsPlaying(true);
+};
 
   const handleTogglePlay = (playState: boolean) => {
     setIsPlaying(playState);

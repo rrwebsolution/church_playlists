@@ -24,16 +24,20 @@ instance.interceptors.request.use(
     (config) => {
         const requestKey = generateRequestKey(config);
 
-        // Kung naa nay nagdagan nga kaparehas nga request, i-cancel ang karaan
-        if (pendingRequests.has(requestKey)) {
+        // KINI ANG GIDUGANG:
+        // Ayaw i-cancel kung ang URL kay para sa obs update
+        const isObsUpdate = config.url?.includes('obs/update');
+
+        if (pendingRequests.has(requestKey) && !isObsUpdate) {
             const controller = pendingRequests.get(requestKey);
             controller.abort("Duplicate request cancelled automatically.");
         }
 
-        // Maghimo tag bag-ong tig-kontrol (AbortController) para aning bag-ong request
-        const controller = new AbortController();
-        config.signal = controller.signal;
-        pendingRequests.set(requestKey, controller);
+        if (!isObsUpdate) {
+            const controller = new AbortController();
+            config.signal = controller.signal;
+            pendingRequests.set(requestKey, controller);
+        }
 
         return config;
     },

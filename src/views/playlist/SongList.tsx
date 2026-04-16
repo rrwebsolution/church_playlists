@@ -20,26 +20,32 @@ const Toast = Swal.mixin({
   timerProgressBar: true,
 });
 
-// --- SUPER PROXY ENGINE ---
+// --- UPGRADED PROXY ENGINE ---
 const fetchWithProxy = async (targetUrl: string) => {
   const proxies = [
-    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-    `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
     `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
-    `https://thingproxy.freeboard.io/fetch/${targetUrl}`
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+    `https://cors.sh/${targetUrl}`,
+    `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
+    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
   ];
 
   for (const proxy of proxies) {
     try {
-      const res = await axios.get(proxy, { timeout: 5000 });
-      if (proxy.includes('allorigins') && res.data?.contents) {
-        return { data: res.data.contents };
+      const res = await axios.get(proxy, { timeout: 8000 });
+      const dataString = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data);
+      if (dataString.includes("Forbidden") || dataString.includes("Cloudflare") || dataString.includes("error code: 1020")) {
+        console.warn(`Proxy ${proxy} was blocked.`);
+        continue;
       }
-      if (res.data) return res;
-    } catch (e) {}
+      return res; 
+    } catch (e) {
+      console.warn(`Proxy failed: ${proxy}`, e);
+    }
   }
-  throw new Error("Proxies failed");
+  throw new Error("All proxies failed.");
 };
+
 
 // --- AGGRESSIVE CLEANER ---
 const cleanUpSongData = (rawArtist: string, rawTitle: string) => {
@@ -59,7 +65,7 @@ const cleanUpSongData = (rawArtist: string, rawTitle: string) => {
   title = title.replace(/\([^)]*\)|\[[^\]]*\]/g, '');
   artist = artist.replace(/\([^)]*\)|\[[^\]]*\]/g, '');
 
-  const junkRegex = /(Official|Music Video|Lyric Video|Lyrics|Wish 107.5 Bus|Music|TV|Live|Acoustic|Performance|HD|HQ|Audio|VEVO|Topic|Channel|in Melbourne|Cover|\bVideo\b)/gi;
+  const junkRegex = /(Official|Music Video|Lyric Video|'|Lyrics|Wish 107.5 Bus|Music|TV|Live|Acoustic|Performance|HD|HQ|Audio|VEVO|Topic|Channel|in Melbourne|Cover|\bVideo\b)/gi;
   title = title.replace(junkRegex, '').trim();
   artist = artist.replace(junkRegex, '').trim();
 
@@ -79,54 +85,84 @@ const extractUGJson = (html: string) => {
   return null;
 };
 
-// --- MULTI-LAYER LYRICS ENGINE ---
+// --- 🔥 BAG-O NGA "API": TheWorshipSongs.com SCRAPER 🔥 ---
+const fetchLyricsFromWorshipSongs = async (_artist: string, title: string) => {
+  try {
+    // 1. Himuon ang URL slug (e.g., "Imong Gunit" -> "imong-gunit")
+    const slug = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-');
+    const targetUrl = `https://www.theworshipsongs.com/parts/lyrics/${slug}-lyrics.html`;
+
+    // 2. Kuhaon ang HTML content sa page
+    const response = await fetchWithProxy(targetUrl);
+    
+    // 3. Pangitaon ang div nga naay sulod nga lyrics
+    const contentMatch = response.data.match(/<div class="post-body entry-content[^"]*">([\s\S]*?)<\/div>/i);
+
+    if (contentMatch && contentMatch[1]) {
+      // 4. Limpyuhan ang nakuha nga HTML
+      let lyrics = contentMatch[1]
+        .replace(/<br\s*\/?>/gi, '\n') // Himuong newline ang <br>
+        .replace(/<p><strong>.*?<\/strong><\/p>/gi, '') // Tangtangon ang mga header sa sulod
+        .replace(/<[^>]+>/g, '') // Tangtangon ang tanang ubang HTML tags
+        .replace(/&#\d+;/g, (match:any) => String.fromCharCode(parseInt(match.substring(2, match.length - 1)))) // I-decode ang HTML entities
+        .replace(/&nbsp;/g, ' ')
+        .trim();
+        
+      // Kuhaon ang mga junk sa sinugdanan
+      const firstRealLineIndex = lyrics.search(/\n\s*\n/);
+      if (firstRealLineIndex !== -1) {
+          lyrics = lyrics.substring(firstRealLineIndex).trim();
+      }
+
+      if (lyrics.length > 50) {
+        return lyrics;
+      }
+    }
+  } catch (e) {
+    console.warn("TheWorshipSongs.com fetch failed:", e);
+  }
+  return "";
+};
+
+
+// --- MULTI-LAYER LYRICS ENGINE (GI-UPDATE) ---
 const fetchLyricsSmart = async (artist: string, title: string) => {
+  // 1. 🔥 UNAHON ANG BAG-O NGA TheWorshipSongs.com
+  const worshipSongsLyrics = await fetchLyricsFromWorshipSongs(artist, title);
+  if (worshipSongsLyrics) return worshipSongsLyrics;
+
   const query = encodeURIComponent(`${artist} ${title}`);
 
-  try {
+  try { // 2. LRCLib (Direct)
+    const res = await axios.get(`https://lrclib.net/api/search?q=${query}`, { timeout: 5000 });
+    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+    const bestMatch = data?.find((d: any) => (d.plainLyrics || d.syncedLyrics));
+    if (bestMatch && (bestMatch.plainLyrics || bestMatch.syncedLyrics)) {
+      return (bestMatch.plainLyrics || bestMatch.syncedLyrics).replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '').trim();
+    }
+  } catch (e) {}
+
+  try { // 3. Popcat (Direct)
+    const res = await axios.get(`https://api.popcat.xyz/lyrics?song=${query}`, { timeout: 5000 });
+    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+    if (data?.lyrics && data.lyrics.length > 50) return data.lyrics.trim();
+  } catch (e) {}
+
+  try { // 4. ChristianLyricsOnline (with Proxy)
     const searchUrl = `https://christianlyricsonline.net/?s=${query}`;
     const searchRes = await fetchWithProxy(searchUrl);
-    
     const links = searchRes.data.match(/href="(https:\/\/christianlyricsonline\.net\/(?:lyrics\/)?[^/"]+\/)"/g);
-    let postUrl = null;
     if (links) {
-      for (const link of links) {
-        const cleanLink = link.replace(/href="|"/g, '');
-        if (!cleanLink.includes('/category/') && !cleanLink.includes('/tag/') && !cleanLink.includes('/about/') && !cleanLink.includes('/author/')) {
-          postUrl = cleanLink;
-          break;
+      const postUrl = links.find((link:any) => !/category|tag|about|author/.test(link))?.replace(/href="|"/g, '');
+      if (postUrl) {
+        const articleRes = await fetchWithProxy(postUrl);
+        const contentMatch = articleRes.data.match(/<div class="[^"]*entry-content[^"]*">([\s\S]*?)<\/div>/i);
+        if (contentMatch && contentMatch[1]) {
+          let rawLyrics = contentMatch[1].replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&#8217;|&#039;/g, "'").replace(/&#8220;|&#8221;/g, '"').replace(/&nbsp;/g, ' ').replace(/Share this:[\s\S]*/gi, ''); 
+          if (rawLyrics.length > 50) return rawLyrics.trim();
         }
       }
     }
-    if (postUrl) {
-      const articleRes = await fetchWithProxy(postUrl);
-      const contentMatch = articleRes.data.match(/<div class="[^"]*entry-content[^"]*">([\s\S]*?)<\/div>/i);
-      if (contentMatch && contentMatch[1]) {
-        let rawLyrics = contentMatch[1]
-          .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&#8217;/g, "'").replace(/&#039;/g, "'")
-          .replace(/&#8220;/g, '"').replace(/&#8221;/g, '"').replace(/&nbsp;/g, ' ').replace(/Share this:[\s\S]*/gi, ''); 
-        if (rawLyrics.length > 50) return rawLyrics.trim();
-      }
-    }
-  } catch (e) {}
-
-  try {
-    const res = await fetchWithProxy(`https://lrclib.net/api/search?q=${query}`);
-    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-    const bestMatch = data?.find((d: any) => (d.plainLyrics !== null && d.plainLyrics !== "") || (d.syncedLyrics !== null && d.syncedLyrics !== ""));
-    if (bestMatch) {
-      let finalLyrics = bestMatch.plainLyrics || bestMatch.syncedLyrics;
-      if (finalLyrics) {
-        finalLyrics = finalLyrics.replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '');
-        return finalLyrics.trim();
-      }
-    }
-  } catch (e) {}
-
-  try {
-    const res = await fetchWithProxy(`https://api.popcat.xyz/lyrics?song=${query}`);
-    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-    if (data?.lyrics && data.lyrics.length > 50) return data.lyrics.trim();
   } catch (e) {}
 
   return "";
@@ -143,7 +179,7 @@ const fetchChordsSmart = async (artist: string, title: string) => {
     if (matchPre && matchPre[1]) {
       return matchPre[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&#039;/g, "'").trim();
     }
-  } catch(e) { }
+  } catch(e) {}
 
   try {
     const chordSearchUrl = `https://www.ultimate-guitar.com/search.php?search_type=title&value=${query}`;
@@ -157,7 +193,7 @@ const fetchChordsSmart = async (artist: string, title: string) => {
         const tabStore = extractUGJson(tabRes.data);
         if (tabStore) {
           const rawContent = tabStore?.store?.page?.data?.tab_view?.wiki_tab?.content || tabStore?.data?.tab_view?.wiki_tab?.content || "";
-          if (rawContent) return rawContent.replace(/\[\/?ch\]/g, '').replace(/\[\/?tab\]/g, '').replace(/&#039;/g, "'").trim();
+          if (rawContent) return rawContent.replace(/\[\/?(ch|tab)\]/g, '').replace(/&#039;/g, "'").trim();
         }
       }
     }
@@ -206,8 +242,9 @@ const getCleanLyricsText = (lyrics: string) => {
 
     if (!isChordLine(line)) result.push(line);
   }
-  return result.join('\n').trim();
+  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 };
+
 
 // --- SMART LYRICS FORMATTER ---
 const formatLyrics = (lyrics: string) => {
@@ -314,7 +351,7 @@ export default function SongList(props: any) {
   const [activeTab, setActiveTab] = useState<'lyrics' | 'chords'>('lyrics');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempText, setTempText] = useState<string>("");
-  const [fetchingSongId, setFetchingSongId] = useState<string | null>(null);
+  const[fetchingSongId, setFetchingSongId] = useState<string | null>(null);
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [tempTitle, setTempTitle] = useState<string>("");
 
@@ -510,41 +547,47 @@ export default function SongList(props: any) {
     const [artist, title] = formValues;
 
     setFetchingSongId(song.id);
-    let [newLyrics, newChords] = await Promise.all([ fetchLyricsSmart(artist, title), fetchChordsSmart(artist, title) ]);
+    const [lyricsResult, chordsResult] = await Promise.all([ fetchLyricsSmart(artist, title), fetchChordsSmart(artist, title) ]);
 
-    if (!newLyrics && newChords) {
-      let lines = newChords.split('\n');
-      let finalLyricLines = [];
-      for (let line of lines) {
-        let trimmed = line.trim();
-        if (trimmed === "" || /^\[(.*?)\]$/.test(trimmed) || /^(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Hook|Refrain|Interlude|Tag|Ending|Instrumental|Solo)/i.test(trimmed)) {
-          finalLyricLines.push(trimmed); continue;
-        }
-        const words = trimmed.split(/\s+/).filter((w:any) => w.length > 0);
-        const isMostlyChords = words.length > 0 && words.every((w:any) => /^[A-G][b#]?(m|maj|sus|dim|aug|add)?[0-9]*((\/)[A-G][b#]?)?$/i.test(w) || w === '|' || w === '-' || w === '~' || w === 'x');
-        if (!isMostlyChords) finalLyricLines.push(trimmed);
-      }
-      newLyrics = finalLyricLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    let finalLyrics = lyricsResult;
+    if (chordsResult && (!lyricsResult || chordsResult.length > lyricsResult.length + 50)) {
+        finalLyrics = getCleanLyricsText(chordsResult);
     }
 
     setFolders((prev: PlaylistFolder[]) => prev.map(folder => {
       if (folder.id === activeFolderId) {
-        return { ...folder, songs: folder.songs.map(s => s.id === song.id ? { ...s, lyrics: newLyrics || s.lyrics, chords: newChords || s.chords } : s) };
+        return { ...folder, songs: folder.songs.map(s => s.id === song.id ? { ...s, lyrics: finalLyrics || s.lyrics, chords: chordsResult || s.chords } : s) };
       }
       return folder;
     }));
     setFetchingSongId(null);
 
-    if (newLyrics && newChords) {
+    // UPGRADED SWAL NOTIFICATIONS
+    if (finalLyrics && chordsResult) {
       Swal.fire({ icon: 'success', title: 'Found it!', html: `<p style="font-size: 14px; font-weight: 500; color: #3f3f46;">Successfully downloaded both <b>Lyrics</b> and <b>Chords</b>.</p>`, timer: 3000, showConfirmButton: false });
       setActiveTab('chords');
-    } else if (newLyrics || newChords) {
-      const foundItem = newLyrics ? 'Lyrics' : 'Chords';
-      const missingItem = newLyrics ? 'Chords' : 'Lyrics';
-      Swal.fire({ title: `<span style="font-weight: 900; color: #f59e0b;">Partial Data Found</span>`, html: `<p>Found ${foundItem}, missing ${missingItem}.</p>`, focusConfirm: false, confirmButtonColor: '#f59e0b', customClass: { popup: 'rounded-3xl' } });
-      setActiveTab(newChords && !newLyrics ? 'chords' : 'lyrics');
+    } else if (finalLyrics || chordsResult) {
+      const foundItem = finalLyrics ? 'Lyrics' : 'Chords';
+      const missingItem = finalLyrics ? 'Chords' : 'Lyrics';
+      Swal.fire({ icon: 'info', title: 'Partial Data Found', html: `<div style="text-align: center;"><p style="font-size: 15px; font-weight: bold; color: #3f3f46;">We found the <span style="color: #4f46e5;">${foundItem}</span>!</p><p style="font-size: 13px; color: #71717a; margin-top: 8px;">However, we couldn't find the <b>${missingItem}</b> online. You may need to paste the ${missingItem.toLowerCase()} manually.</p></div>`, confirmButtonText: 'Okay, got it', confirmButtonColor: '#4f46e5', customClass: { popup: 'rounded-3xl' } });
+      setActiveTab(chordsResult && !finalLyrics ? 'chords' : 'lyrics');
     } else {
-      Swal.fire({ title: '<span style="font-weight: 900; color: #ef4444;">Data Not Found</span>', html: `<p>Could not find data online.</p>`, focusConfirm: false, confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-3xl' }});
+      const { isConfirmed } = await Swal.fire({ 
+        icon: 'warning',
+        title: 'Data Not Found Online', 
+        html: `<p style="font-size: 14px; color: #71717a;">The automated search failed. You can search on Google and paste the lyrics or chords yourself.</p>`, 
+        showCancelButton: true,
+        confirmButtonText: 'Edit Manually',
+        cancelButtonText: 'Close',
+        confirmButtonColor: '#4f46e5',
+        customClass: { popup: 'rounded-3xl' }
+      });
+      if (isConfirmed) {
+        setEditingId(song.id);
+        const rawText = song[activeTab] || "";
+        const textToEdit = activeTab === 'lyrics' ? stripChordsForEdit(rawText) : rawText;
+        setTempText(textToEdit); 
+      }
     }
   };
 
@@ -741,7 +784,7 @@ export default function SongList(props: any) {
                                         {!isLocalSearch && (
                                           <>
                                             <button disabled={isFetchingData} onClick={() => handleManualFetch(song)} className={`flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-xl text-indigo-700 dark:text-indigo-400 font-bold text-[10px] uppercase tracking-wider shadow-sm transition-all ${isFetchingData ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-indigo-100 dark:hover:bg-indigo-500/20 active:scale-95'}`}>
-                                              <CloudDownload className={`w-4 h-4 ${isFetchingData ? 'animate-bounce' : ''}`} /> Generate
+                                              <CloudDownload className={`w-4 h-4 ${isFetchingData ? 'animate-bounce' : ''}`} /> Try to Generate
                                             </button>
                                             <button 
                                               disabled={isFetchingData} 

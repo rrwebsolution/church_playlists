@@ -54,6 +54,7 @@ export default function App() {
   });
 
   const [isPlaying, setIsPlaying] = useState(false);
+  
   const ytPlayerRef = useRef<any>(null);
   const [ytPlayer, setYtPlayer] = useState<any>(null); 
   
@@ -100,7 +101,7 @@ export default function App() {
 
   useEffect(() => { setIsClient(true); }, []);
 
-  // --- 🔥 YOUTUBE PLAYER INITIALIZATION (CLEANED) 🔥 ---
+  // --- 🔥 YOUTUBE PLAYER (FORCED AUTOPLAY) 🔥 ---
   const initPlayer = useCallback(() => {
     const container = document.getElementById('vanilla-yt-player');
     if (!container) return; 
@@ -127,9 +128,7 @@ export default function App() {
           event.target.setVolume(Math.round(volume * 100));
           
           if (initialId) {
-            // Diretso play inig ready (Refresh/Entry)
             event.target.playVideo();
-            setIsPlaying(true);
           }
         },
         onStateChange: (event: any) => {
@@ -176,11 +175,9 @@ export default function App() {
     const currentIndex = playlist.findIndex(s => s.id === currentSongRef.current?.id);
     const nextSong = playlist[(currentIndex + 1) % playlist.length];
     const nextVideoId = getYouTubeID(nextSong.url);
-
     if (nextVideoId) {
       playerInstance.loadVideoById(nextVideoId);
       setCurrentSong(nextSong);
-      setIsPlaying(true);
     }
   };
 
@@ -192,7 +189,6 @@ export default function App() {
     if (player && typeof player.loadVideoById === 'function' && nextId) {
       player.loadVideoById(nextId);
       player.playVideo();
-      setIsPlaying(true);
     }
   };
 

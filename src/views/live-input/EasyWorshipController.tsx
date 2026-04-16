@@ -17,7 +17,6 @@ const Toast = Swal.mixin({
   customClass: { container: 'z-[99999]' }
 });
 
-// 🔥 BAG-ONG TYPES PARA SA FOLDERS
 export interface SavedItem {
   id: string;
   title: string;
@@ -34,8 +33,10 @@ export interface ArchiveFolder {
 type BackgroundType = 'none' | 'praise' | 'worship' | 'green';
 
 export default function EasyWorshipController() {
-  const [inputTitle, setInputTitle] = useState("");
-  const [inputText, setInputText] = useState("");
+  
+  const [inputTitle, setInputTitle] = useState(() => localStorage.getItem('ew_draft_title') || "");
+  const [inputText, setInputText] = useState(() => localStorage.getItem('ew_draft_text') || "");
+
   const [liveText, setLiveText] = useState(""); 
   const [lastLiveText, setLastLiveText] = useState(""); 
   const[previewFontSize, setPreviewFontSize] = useState(100);
@@ -46,7 +47,6 @@ export default function EasyWorshipController() {
 
   const [currentArchiveId, setCurrentArchiveId] = useState<string | null>(null);
 
-  // 🔥 BAG-ONG STATE: FOLDERS IMBIS FLAT LIST
   const [archiveFolders, setArchiveFolders] = useState<ArchiveFolder[]>(() => {
     const saved = localStorage.getItem('jamc_ew_folders');
     return saved ? JSON.parse(saved) :[{ id: 'default', name: 'General Library', items: [] }];
@@ -55,6 +55,16 @@ export default function EasyWorshipController() {
   useEffect(() => {
     localStorage.setItem('jamc_ew_folders', JSON.stringify(archiveFolders));
   }, [archiveFolders]);
+
+  useEffect(() => {
+    const draftTimer = setTimeout(() => {
+      localStorage.setItem('ew_draft_title', inputTitle);
+      localStorage.setItem('ew_draft_text', inputText);
+    }, 500);
+
+    return () => clearTimeout(draftTimer);
+  }, [inputTitle, inputText]);
+
 
   const broadcastData = async (text: string, size: number, bg: string) => {
     setLiveText(text); 
@@ -87,7 +97,17 @@ export default function EasyWorshipController() {
 
   useEffect(() => { if (liveText !== "") broadcastData(liveText, previewFontSize, bgType); },[previewFontSize, bgType]);
 
-  // --- 🔥 GI-UPDATE NGA SAVE LOGIC (WITH FOLDER SELECTION) ---
+  const handleClearEditor = () => { 
+    setInputTitle(""); 
+    setInputText(""); 
+    setLiveSlideIndex(null); 
+    setCurrentArchiveId(null);
+    localStorage.removeItem('ew_draft_title');
+    localStorage.removeItem('ew_draft_text');
+    Toast.fire({ icon: 'success', title: 'Editor Cleared' });
+  };
+  
+  // --- 🔥 GI-UPDATE NGA SAVE LOGIC (NGA NAAY AUTO-CLEAR) 🔥 ---
   const handleSaveText = async () => {
     if (!inputText.trim()) return;
 
@@ -102,6 +122,7 @@ export default function EasyWorshipController() {
         )
       })));
       Toast.fire({ icon: 'success', title: 'Updated in Folder!' });
+      handleClearEditor(); // 🔥 Tawagon ang clear function
       return;
     }
 
@@ -152,16 +173,12 @@ export default function EasyWorshipController() {
     ));
 
     Toast.fire({ icon: 'success', title: 'Saved to Library!' });
+    handleClearEditor(); // 🔥 Tawagon ang clear function
   };
 
   const handleBlackoutToggle = () => {
     if (liveText !== "") { setLastLiveText(liveText); broadcastData("", previewFontSize, bgType); } 
     else if (lastLiveText !== "") { broadcastData(lastLiveText, previewFontSize, bgType); }
-  };
-
-  const handleClearEditor = () => { 
-    setInputTitle(""); setInputText(""); setLiveSlideIndex(null); setCurrentArchiveId(null);
-    Toast.fire({ icon: 'success', title: 'Editor Cleared' });
   };
 
   return (
@@ -230,7 +247,6 @@ export default function EasyWorshipController() {
         </div>
       </div>
 
-      {/* 🔥 GI-IPASANG ARCHIVE FOLDERS */}
       <EasyWorshipArchives 
         folders={archiveFolders} 
         setFolders={setArchiveFolders}
@@ -239,6 +255,8 @@ export default function EasyWorshipController() {
           setInputText(item.text); 
           setLiveSlideIndex(null); 
           setCurrentArchiveId(item.id); 
+          localStorage.setItem('ew_draft_title', item.title);
+          localStorage.setItem('ew_draft_text', item.text);
           window.scrollTo({ top: 0, behavior: 'smooth' }); 
         }} 
       />

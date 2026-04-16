@@ -14,20 +14,37 @@ interface SlidesProps {
   showMonitor: boolean;
 }
 
-// 🔥 MAS AGGRESSIVE NGA FONT SCALING ARON MAIGO JUD SA CARD
 const getFontSizeClass = (text: string): string => {
   const lineCount = text.split('\n').length;
   const charCount = text.length;
 
-  // Kung pwerteng taasa sa gi-paste (e.g., tibuok verse nga gi-usa)
   if (lineCount >= 8 || charCount > 250) return 'text-[9px] leading-tight'; 
   if (lineCount >= 6 || charCount > 180) return 'text-[11px] leading-tight'; 
   if (lineCount >= 4 || charCount > 120) return 'text-[12px] leading-snug';
-  // Kung mubo ra kaayo (e.g., Intro/Outro o usa ka linya)
   if (charCount < 60 && lineCount <= 2) return 'text-[16px] leading-tight font-bold'; 
-  // Default nga gidak-on
   return 'text-[14px] leading-snug'; 
 };
+
+// 🔥 BAG-ONG FUNCTION: Mohatag og kolor base sa label 🔥
+const getLabelBasedColors = (label: string | null): string => {
+  const lowerLabel = label?.toLowerCase() || '';
+  
+  if (lowerLabel.includes('chorus')) {
+    return 'bg-indigo-50/70 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-800/60';
+  }
+  if (lowerLabel.includes('verse')) {
+    return 'bg-blue-50/70 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800/60';
+  }
+  if (lowerLabel.includes('bridge') || lowerLabel.includes('tag')) {
+    return 'bg-purple-50/70 dark:bg-purple-900/30 border-purple-200 dark:border-purple-800/60';
+  }
+  if (lowerLabel.includes('pre-chorus') || lowerLabel.includes('intro') || lowerLabel.includes('outro')) {
+    return 'bg-sky-50/70 dark:bg-sky-900/30 border-sky-200 dark:border-sky-800/60';
+  }
+  // Default color kung walay label
+  return 'bg-white/50 dark:bg-zinc-800/40 border-zinc-200 dark:border-white/10';
+};
+
 
 export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideClick }: SlidesProps) => {
   return (
@@ -57,6 +74,8 @@ export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideC
         ) : (
           slides.map((slide, index) => {
             const isLive = liveSlideIndex === index && !isBlackout;
+            const labelColors = getLabelBasedColors(slide.label);
+
             return (
               <button
                 key={index}
@@ -64,7 +83,7 @@ export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideC
                 className={`text-left p-5 rounded-[2rem] border transition-all duration-500 group relative flex items-center gap-4 min-h-34 overflow-hidden ${
                   isLive 
                     ? 'border-red-500 bg-red-50/80 dark:bg-red-900/20 ring-4 ring-red-500/20 scale-[1.02] z-10 shadow-2xl shadow-red-500/20' 
-                    : 'border-zinc-200 dark:border-white/10 bg-white/50 dark:bg-zinc-800/40 hover:border-indigo-400 hover:bg-white dark:hover:bg-zinc-800 hover:-translate-y-1 hover:shadow-xl transition-all'
+                    : `${labelColors} hover:border-indigo-400 hover:shadow-xl hover:-translate-y-1 transition-all`
                 }`}
               >
                 {/* LEFT-SIDE: Elegant Badge */}
@@ -86,16 +105,16 @@ export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideC
                   )}
                 </div>
                 
-                {/* SLIDE TEXT CONTENT (Gitangtang ang pr-16 para ma-maximize ang width) */}
+                {/* SLIDE TEXT CONTENT */}
                 <div className="flex-1 w-full z-10 pr-2">
-                  <p className={`whitespace-pre-wrap warp-break-word tracking-tight transition-colors duration-300 ${
+                  <p className={`whitespace-pre-wrap wrap-break-word tracking-tight transition-colors duration-300 ${
                     isLive ? 'text-red-950 dark:text-red-300 font-bold' : 'text-zinc-600 dark:text-zinc-300'
                   } ${getFontSizeClass(slide.text)}`}>
                     {slide.text}
                   </p>
                 </div>
 
-                {/* RIGHT-SIDE: Stylized Watermark (Anaa ra sa luyo sa text) */}
+                {/* RIGHT-SIDE: Stylized Watermark */}
                 <span className={`absolute right-2 bottom-0 text-[4.5rem] font-black italic select-none pointer-events-none transition-all duration-500 z-0 ${
                     isLive 
                       ? 'text-red-300/20 translate-y-2'

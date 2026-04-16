@@ -4,7 +4,6 @@ import Swal from 'sweetalert2';
 import Draggable from 'react-draggable';
 import instance from '../../plugin/axios'; 
 
-// I-import ang separated components
 import { EasyWorshipArchives } from './EasyWorshipArchives';
 import { EasyWorshipSlides } from './EasyWorshipSlides';
 import { EasyWorshipEditor } from './EasyWorshipEditor';
@@ -18,11 +17,18 @@ const Toast = Swal.mixin({
   customClass: { container: 'z-[99999]' }
 });
 
-interface SavedItem {
+// 🔥 BAG-ONG TYPES PARA SA FOLDERS
+export interface SavedItem {
   id: string;
   title: string;
   text: string;
   date: string;
+}
+
+export interface ArchiveFolder {
+  id: string;
+  name: string;
+  items: SavedItem[];
 }
 
 type BackgroundType = 'none' | 'praise' | 'worship' | 'green';
@@ -32,34 +38,32 @@ export default function EasyWorshipController() {
   const [inputText, setInputText] = useState("");
   const [liveText, setLiveText] = useState(""); 
   const [lastLiveText, setLastLiveText] = useState(""); 
-  const [previewFontSize, setPreviewFontSize] = useState(90);
+  const[previewFontSize, setPreviewFontSize] = useState(100);
   const [bgType, setBgType] = useState<BackgroundType>('green');
   const [showMonitor, setShowMonitor] = useState(true);
-  const [liveSlideIndex, setLiveSlideIndex] = useState<number | null>(null);
+  const[liveSlideIndex, setLiveSlideIndex] = useState<number | null>(null);
   const nodeRef = useRef(null);
 
-  const [savedItems, setSavedItems] = useState<SavedItem[]>(() => {
-    const saved = localStorage.getItem('jamc_saved_live_texts');
-    return saved ? JSON.parse(saved) : [];
+  const [currentArchiveId, setCurrentArchiveId] = useState<string | null>(null);
+
+  // 🔥 BAG-ONG STATE: FOLDERS IMBIS FLAT LIST
+  const [archiveFolders, setArchiveFolders] = useState<ArchiveFolder[]>(() => {
+    const saved = localStorage.getItem('jamc_ew_folders');
+    return saved ? JSON.parse(saved) :[{ id: 'default', name: 'General Library', items: [] }];
   });
 
   useEffect(() => {
-    localStorage.setItem('jamc_saved_live_texts', JSON.stringify(savedItems));
-  }, [savedItems]);
+    localStorage.setItem('jamc_ew_folders', JSON.stringify(archiveFolders));
+  }, [archiveFolders]);
 
-  // --- BROADCAST FUNCTION ---
   const broadcastData = async (text: string, size: number, bg: string) => {
-    setLiveText(text); // UI update dayon
-    
+    setLiveText(text); 
     const data = { text, fontSize: size, background: bg, updatedAt: Date.now() };
-    
-    // I-send sa Laravel (Himoa nga 'api/obs/update' kon naa sa api.php)
-    await instance.post('/obs/update', data); 
-};
+    try { await instance.post('/obs/update', data); } catch (err) {}
+  };
 
-  // --- QUICK SLIDE LOGIC ---
   const quickSlides = useMemo(() => {
-    if (!inputText.trim()) return [];
+    if (!inputText.trim()) return[];
     return inputText.split(/\n\s*\n/).map(block => {
       const lines = block.trim().split('\n');
       const firstLine = lines[0].trim();
@@ -71,48 +75,98 @@ export default function EasyWorshipController() {
     }).filter(b => b.text.length > 0);
   }, [inputText]);
 
-  // Real-time editor sync
   useEffect(() => {
     const timer = setTimeout(() => {
       if (liveSlideIndex !== null && quickSlides[liveSlideIndex]) {
         const updatedText = quickSlides[liveSlideIndex].text;
-        if (updatedText !== liveText && liveText !== "") {
-          broadcastData(updatedText, previewFontSize, bgType);
-        }
+        if (updatedText !== liveText && liveText !== "") broadcastData(updatedText, previewFontSize, bgType);
       }
     }, 200);
     return () => clearTimeout(timer);
   }, [quickSlides, liveSlideIndex, liveText, previewFontSize, bgType]);
 
-  useEffect(() => {
-    if (liveText !== "") broadcastData(liveText, previewFontSize, bgType);
-  }, [previewFontSize, bgType]);
+  useEffect(() => { if (liveText !== "") broadcastData(liveText, previewFontSize, bgType); },[previewFontSize, bgType]);
 
-  const handleSaveText = () => {
+  // --- 🔥 GI-UPDATE NGA SAVE LOGIC (WITH FOLDER SELECTION) ---
+  const handleSaveText = async () => {
     if (!inputText.trim()) return;
-    const newItem = { id: Date.now().toString(), title: inputTitle.trim() || 'Untitled Document', text: inputText.trim(), date: new Date().toLocaleDateString() };
-    setSavedItems(prev => [newItem, ...prev]);
+
+    // KUNG RESTORED NI NGA KANTA (Update existing)
+    if (currentArchiveId) {
+      setArchiveFolders(prev => prev.map(folder => ({
+        ...folder,
+        items: folder.items.map(item => 
+          item.id === currentArchiveId 
+            ? { ...item, title: inputTitle.trim() || 'Untitled Document', text: inputText.trim(), date: new Date().toLocaleDateString() } 
+            : item
+        )
+      })));
+      Toast.fire({ icon: 'success', title: 'Updated in Folder!' });
+      return;
+    }
+
+    // KUNG BAG-O NGA KANTA: Mangutana kung asa isave
+    const folderOptions: Record<string, string> = {};
+    archiveFolders.forEach(f => { folderOptions[f.id] = `📁 ${f.name}`; });
+    folderOptions['NEW_FOLDER'] = '➕ Create New Folder...';
+
+    const { value: selectedFolderId } = await Swal.fire({
+      title: 'Save to Folder',
+      input: 'select',
+      inputOptions: folderOptions,
+      showCancelButton: true,
+      confirmButtonColor: '#4f46e5',
+    });
+
+    if (!selectedFolderId) return; // Na-cancel
+
+    let targetFolderId = selectedFolderId;
+
+    // KUNG GUSTO MOG HIMO OG BAG-ONG FOLDER
+    if (selectedFolderId === 'NEW_FOLDER') {
+      const { value: folderName } = await Swal.fire({
+        title: 'New Folder Name',
+        input: 'text',
+        showCancelButton: true,
+        inputValidator: (value) => !value ? 'Folder name is required!' : null
+      });
+      if (!folderName) return;
+
+      targetFolderId = Date.now().toString();
+      const newFolder: ArchiveFolder = { id: targetFolderId, name: folderName, items: [] };
+      setArchiveFolders(prev =>[...prev, newFolder]);
+    }
+
+    // ISAVE ANG KANTA SA TARGET FOLDER
+    const newItem: SavedItem = { 
+      id: Date.now().toString(), 
+      title: inputTitle.trim() || 'Untitled Document', 
+      text: inputText.trim(), 
+      date: new Date().toLocaleDateString() 
+    };
+
+    setArchiveFolders(prev => prev.map(folder => 
+      folder.id === targetFolderId 
+        ? { ...folder, items: [newItem, ...folder.items] } 
+        : folder
+    ));
+
     Toast.fire({ icon: 'success', title: 'Saved to Library!' });
   };
 
   const handleBlackoutToggle = () => {
-    if (liveText !== "") {
-      setLastLiveText(liveText);
-      broadcastData("", previewFontSize, bgType);
-    } else if (lastLiveText !== "") {
-      broadcastData(lastLiveText, previewFontSize, bgType);
-    }
+    if (liveText !== "") { setLastLiveText(liveText); broadcastData("", previewFontSize, bgType); } 
+    else if (lastLiveText !== "") { broadcastData(lastLiveText, previewFontSize, bgType); }
   };
 
   const handleClearEditor = () => { 
-    setInputTitle(""); setInputText(""); setLiveSlideIndex(null);
+    setInputTitle(""); setInputText(""); setLiveSlideIndex(null); setCurrentArchiveId(null);
     Toast.fire({ icon: 'success', title: 'Editor Cleared' });
   };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-32 px-4 relative min-h-screen font-sans bg-zinc-50 dark:bg-zinc-950">
       
-      {/* HEADER */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pt-6 px-2">
         <div className="flex items-center gap-5">
           <div className="p-4 bg-indigo-500 text-white rounded-3xl shadow-xl shadow-indigo-500/20"><Presentation className="w-8 h-8" /></div>
@@ -125,16 +179,13 @@ export default function EasyWorshipController() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-            {!showMonitor && (
-              <button onClick={() => setShowMonitor(true)} className="flex items-center gap-2 px-7 py-4 bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all">
-                <MonitorPlay className="w-4 h-4" /> Show Live Monitor
-              </button>
-            )}
-        </div>
+        {!showMonitor && (
+          <button onClick={() => setShowMonitor(true)} className="flex items-center gap-2 px-7 py-4 bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all">
+            <MonitorPlay className="w-4 h-4" /> Show Live Monitor
+          </button>
+        )}
       </div>
 
-      {/* MONITOR */}
       {showMonitor && (
         <Draggable nodeRef={nodeRef} handle=".drag-handle" bounds="parent">
           <div ref={nodeRef} className="fixed top-28 right-8 z-100 w-full max-w-90 bg-zinc-950 p-4 rounded-[2.5rem] border border-zinc-800 shadow-2xl space-y-4">
@@ -153,7 +204,7 @@ export default function EasyWorshipController() {
                 </div>
                 <div className="flex items-center gap-3">
                   <Settings2 className="w-3 h-3 text-zinc-600" />
-                  <input type="range" min="20" max="150" value={previewFontSize} onChange={(e) => setPreviewFontSize(parseInt(e.target.value))} className="flex-1 h-1 bg-zinc-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
+                  <input type="range" min="20" max="200" value={previewFontSize} onChange={(e) => setPreviewFontSize(parseInt(e.target.value))} className="flex-1 h-1 bg-zinc-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
                   <span className="text-[10px] font-bold text-zinc-500 tabular-nums">{previewFontSize}px</span>
                 </div>
             </div>
@@ -161,16 +212,16 @@ export default function EasyWorshipController() {
         </Draggable>
       )}
 
-      {/* WORKSPACE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        <div className="lg:col-span-5">
+      <div className="grid grid-cols-2 gap-8 items-start w-full mx-auto">
+        <div className="w-full">
           <EasyWorshipEditor 
-            title={inputTitle} text={inputText} isOutputCleared={liveText === ""} onTitleChange={setInputTitle} onTextChange={setInputText} 
+            title={inputTitle} text={inputText} isOutputCleared={liveText === ""} 
+            onTitleChange={setInputTitle} onTextChange={setInputText} 
             onClearEditor={handleClearEditor} onSave={handleSaveText} onBlackoutToggle={handleBlackoutToggle} 
           />
         </div>
 
-        <div className="lg:col-span-7">
+        <div className="w-full">
           <EasyWorshipSlides 
             slides={quickSlides} liveSlideIndex={liveSlideIndex} isBlackout={liveText === ""} 
             onSlideClick={(text, idx) => { setLiveSlideIndex(idx); broadcastData(text, previewFontSize, bgType); }} 
@@ -179,9 +230,17 @@ export default function EasyWorshipController() {
         </div>
       </div>
 
+      {/* 🔥 GI-IPASANG ARCHIVE FOLDERS */}
       <EasyWorshipArchives 
-        items={savedItems} onDelete={(id) => setSavedItems(prev => prev.filter(i => i.id !== id))} 
-        onLoad={(item) => { setInputTitle(item.title); setInputText(item.text); setLiveSlideIndex(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
+        folders={archiveFolders} 
+        setFolders={setArchiveFolders}
+        onLoad={(item) => { 
+          setInputTitle(item.title); 
+          setInputText(item.text); 
+          setLiveSlideIndex(null); 
+          setCurrentArchiveId(item.id); 
+          window.scrollTo({ top: 0, behavior: 'smooth' }); 
+        }} 
       />
     </div>
   );

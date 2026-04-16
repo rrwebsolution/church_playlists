@@ -1,4 +1,5 @@
 import { FileText, Trash2, Save, MonitorOff, RotateCcw } from 'lucide-react';
+import { useRef } from 'react';
 
 interface EditorProps {
   title: string;
@@ -14,6 +15,38 @@ interface EditorProps {
 export const EasyWorshipEditor = ({
   title, text, isOutputCleared, onTitleChange, onTextChange, onClearEditor, onSave, onBlackoutToggle
 }: EditorProps) => {
+  
+  // Refs para ma-sync ang scroll sa Line Numbers ug Textarea
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
+
+  const handleScroll = () => {
+    if (textareaRef.current && gutterRef.current) {
+      gutterRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  };
+
+  // 🔥 GI-UPDATE NGA LOGIC: Pag-ihap per BLOCK/SLIDE (Dili per line)
+  let currentBlockNumber = 1;
+  let isNewBlock = true;
+
+  const lineNumbers = text.split('\n').map((line) => {
+    if (line.trim() === '') {
+      // Kung blangko ang linya, i-set nga ang sunod nga naay text kay bag-ong block na
+      isNewBlock = true;
+      return null;
+    } else {
+      if (isNewBlock) {
+        // Unang linya sa block -> Butangan og numero
+        isNewBlock = false;
+        return currentBlockNumber++;
+      } else {
+        // Sumpay nga linya sa block -> Walay numero
+        return null; 
+      }
+    }
+  });
+
   return (
     <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-[2.5rem] p-8 shadow-sm transition-all duration-300">
       
@@ -49,16 +82,33 @@ export const EasyWorshipEditor = ({
           />
         </div>
         
-        <div className="relative">
+        {/* TEXTAREA WITH BLOCK NUMBERS */}
+        <div className="relative flex w-full h-85 bg-zinc-50 dark:bg-black/40 border-2 focus-within:border-indigo-500/30 rounded-3xl overflow-hidden transition-all border-zinc-100 dark:border-zinc-700">
+          
+          {/* GUTTER (Block Numbers) */}
+          <div 
+            ref={gutterRef}
+            className="w-12 md:w-14 h-full shrink-0 bg-zinc-100/50 dark:bg-zinc-800/30 border-r border-zinc-200 dark:border-zinc-700/50 overflow-hidden select-none text-right py-7 pr-3 md:pr-4 text-base leading-relaxed text-zinc-400/70 dark:text-zinc-500 font-bold"
+          >
+            {lineNumbers.map((num, i) => (
+              <div key={i} className={num ? 'text-indigo-500/80 dark:text-indigo-400' : ''}>
+                {num !== null ? num : '\u00A0'}
+              </div>
+            ))}
+          </div>
+
+          {/* TEXTAREA */}
           <textarea 
+            ref={textareaRef}
+            onScroll={handleScroll}
             value={text} 
             onChange={(e) => onTextChange(e.target.value)} 
             placeholder="Paste lyrics here... Use double-enter for new slides." 
-            className="w-full h-85 p-7 bg-zinc-50 dark:bg-black/40 border-2 focus:border-indigo-500/30 rounded-3xl outline-none text-zinc-800 dark:text-zinc-100 font-semibold text-base resize-none custom-scrollbar leading-relaxed border-zinc-100 dark:border-zinc-700" 
+            className="flex-1 w-full h-full py-7 px-6 outline-none bg-transparent resize-none custom-scrollbar text-zinc-800 dark:text-zinc-100 font-semibold text-base leading-relaxed whitespace-pre overflow-x-auto" 
           />
-          {/* Subtle indicator for live sync */}
-          <div className="absolute bottom-4 right-6 pointer-events-none">
-            <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400 opacity-40">
+          
+          <div className="absolute bottom-4 right-6 pointer-events-none z-10">
+            <span className="text-[8px] font-black uppercase tracking-widest text-zinc-400 opacity-40 bg-zinc-50 dark:bg-zinc-900 px-2 py-1 rounded-md">
               Live Sync Active
             </span>
           </div>

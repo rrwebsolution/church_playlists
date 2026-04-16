@@ -1,4 +1,4 @@
-import { LayoutGrid, Presentation } from 'lucide-react';
+import { LayoutGrid, Presentation, FileText } from 'lucide-react';
 
 interface Slide {
   label: string | null;
@@ -14,24 +14,45 @@ interface SlidesProps {
   showMonitor: boolean;
 }
 
+// 🔥 MAS AGGRESSIVE NGA FONT SCALING ARON MAIGO JUD SA CARD
+const getFontSizeClass = (text: string): string => {
+  const lineCount = text.split('\n').length;
+  const charCount = text.length;
+
+  // Kung pwerteng taasa sa gi-paste (e.g., tibuok verse nga gi-usa)
+  if (lineCount >= 8 || charCount > 250) return 'text-[9px] leading-tight'; 
+  if (lineCount >= 6 || charCount > 180) return 'text-[11px] leading-tight'; 
+  if (lineCount >= 4 || charCount > 120) return 'text-[12px] leading-snug';
+  // Kung mubo ra kaayo (e.g., Intro/Outro o usa ka linya)
+  if (charCount < 60 && lineCount <= 2) return 'text-[16px] leading-tight font-bold'; 
+  // Default nga gidak-on
+  return 'text-[14px] leading-snug'; 
+};
+
 export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideClick }: SlidesProps) => {
   return (
-    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-[2.5rem] p-7 shadow-sm min-h-150 flex flex-col">
-      <div className="flex justify-between items-center mb-8 px-1">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-500/10 rounded-lg"><LayoutGrid className="w-5 h-5 text-indigo-600" /></div>
-          <h2 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-800 dark:text-zinc-200">Quick Slides</h2>
+    <div className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md border border-zinc-200 dark:border-white/10 rounded-[3rem] p-8 shadow-2xl min-h-150 flex flex-col">
+      {/* HEADER SECTION */}
+      <div className="flex justify-between items-center mb-8 px-2">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-500/40">
+            <LayoutGrid className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-800 dark:text-zinc-100">
+              Quick Slides
+            </h2>
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">Select a slide to broadcast</p>
+          </div>
         </div>
-        {/* {!showMonitor && (
-          <button onClick={onShowMonitor} className="text-[10px] font-black uppercase text-indigo-500 hover:underline tracking-widest">Show Monitor</button>
-        )} */}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-h-163 overflow-y-auto custom-scrollbar p-2">
+      {/* MAIN GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-160 overflow-y-auto custom-scrollbar p-2">
         {slides.length === 0 ? (
-          <div className="col-span-full h-64 flex flex-col items-center justify-center text-center opacity-30">
-            <Presentation className="w-12 h-12 text-zinc-400 mb-4" />
-            <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.3em]">Editor is empty</p>
+          <div className="col-span-full h-64 flex flex-col items-center justify-center text-center opacity-40">
+            <Presentation className="w-16 h-16 text-zinc-300 dark:text-zinc-700 mb-4" />
+            <p className="text-zinc-500 dark:text-zinc-500 text-xs font-black uppercase tracking-[0.3em]">Editor is empty</p>
           </div>
         ) : (
           slides.map((slide, index) => {
@@ -40,30 +61,56 @@ export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideC
               <button
                 key={index}
                 onClick={() => onSlideClick(slide.text, index)}
-                className={`text-left p-6 rounded-[2rem] border-2 transition-all group relative flex flex-col items-start min-h-38 ${
+                className={`text-left p-5 rounded-[2rem] border transition-all duration-500 group relative flex items-center gap-4 min-h-34 overflow-hidden ${
                   isLive 
-                    ? 'border-red-500 bg-red-50/50 dark:bg-red-500/10 ring-4 ring-red-500/10 scale-[1.03] z-10 shadow-2xl' 
-                    : 'border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-black/20 hover:border-indigo-400 hover:bg-white transition-all hover:shadow-xl'
+                    ? 'border-red-500 bg-red-50/80 dark:bg-red-900/20 ring-4 ring-red-500/20 scale-[1.02] z-10 shadow-2xl shadow-red-500/20' 
+                    : 'border-zinc-200 dark:border-white/10 bg-white/50 dark:bg-zinc-800/40 hover:border-indigo-400 hover:bg-white dark:hover:bg-zinc-800 hover:-translate-y-1 hover:shadow-xl transition-all'
                 }`}
               >
-                <div className="flex items-center justify-between w-full mb-4">
+                {/* LEFT-SIDE: Elegant Badge */}
+                <div className="flex items-center justify-center min-w-14 text-center shrink-0 z-10">
                   {slide.label ? (
-                    <span className="px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] shadow-sm bg-indigo-500 text-white">
+                    <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all duration-300 ${
+                      isLive 
+                        ? 'bg-red-600 text-white shadow-md shadow-red-500/40' 
+                        : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 group-hover:bg-indigo-100 group-hover:text-indigo-600'
+                    }`}>
                       {slide.label}
                     </span>
-                  ) : <span className="h-6"></span>}
-                  
-                  {isLive && (
-                    <div className="flex items-center gap-2 px-3 py-1 bg-red-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest animate-pulse shadow-lg">
-                      <span className="w-1.5 h-1.5 bg-white rounded-full"></span> LIVE
+                  ) : (
+                    <div className={`p-2 rounded-xl transition-all duration-300 ${
+                      isLive ? 'bg-red-100 dark:bg-red-900/40 text-red-600' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 group-hover:bg-indigo-100 group-hover:text-indigo-600'
+                    }`}>
+                      <FileText className="w-4 h-4" />
                     </div>
                   )}
                 </div>
                 
-                <p className={`whitespace-pre-wrap text-[15px] md:text-[16px] font-bold leading-relaxed tracking-tight ${isLive ? 'text-red-900 dark:text-red-400' : 'text-zinc-700 dark:text-zinc-300'}`}>
-                  {slide.text}
-                </p>
-                <span className="absolute bottom-3 right-5 text-[45px] font-black text-black/4 dark:text-white/4 italic select-none">{index + 1}</span>
+                {/* SLIDE TEXT CONTENT (Gitangtang ang pr-16 para ma-maximize ang width) */}
+                <div className="flex-1 w-full z-10 pr-2">
+                  <p className={`whitespace-pre-wrap warp-break-word tracking-tight transition-colors duration-300 ${
+                    isLive ? 'text-red-950 dark:text-red-300 font-bold' : 'text-zinc-600 dark:text-zinc-300'
+                  } ${getFontSizeClass(slide.text)}`}>
+                    {slide.text}
+                  </p>
+                </div>
+
+                {/* RIGHT-SIDE: Stylized Watermark (Anaa ra sa luyo sa text) */}
+                <span className={`absolute right-2 bottom-0 text-[4.5rem] font-black italic select-none pointer-events-none transition-all duration-500 z-0 ${
+                    isLive 
+                      ? 'text-red-300/20 translate-y-2'
+                      : 'text-zinc-800/5 dark:text-white/5 group-hover:text-indigo-500/10'
+                }`}>
+                  {index + 1}
+                </span>
+
+                {/* LIVE PULSE INDICATOR */}
+                {isLive && (
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 bg-red-600 rounded-full shadow-lg z-20">
+                    <span className="w-1 h-1 bg-white rounded-full animate-ping"></span>
+                    <span className="text-[7px] font-black text-white uppercase tracking-tighter">Live</span>
+                  </div>
+                )}
               </button>
             )
           })

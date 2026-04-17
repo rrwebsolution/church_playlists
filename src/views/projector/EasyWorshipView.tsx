@@ -1,97 +1,147 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { type CSSProperties } from 'react';
 
-type BackgroundType = 'none' | 'praise' | 'worship' | 'green';
+// Define CSS styles directly within the component
+const styles = {
+  container: {
+    height: '1080px', // Set height to 1080px
+    width: '1920px', // Set width to 1920px
+    margin: 0,
+    overflow: 'hidden',
+    backgroundColor: '#000', // Default background, will be overridden
+    fontFamily: "'Oswald', sans-serif",
+    display: 'flex',        // Use flexbox for centering
+    alignItems: 'center',   // Vertically center the content
+    justifyContent: 'center', // Horizontally center the content
+  } as CSSProperties,
+  heading: {
+    color: '#fff',
+    textAlign: 'center' as const,
+    textTransform: 'uppercase' as const,
+    fontWeight: 700,
+    margin: 0,
+    lineHeight: 1.1,
+    // Thicker outline with additional shadow directions
+    textShadow: `
+      -6px -6px 0 #000, 6px -6px 0 #000,
+      -6px 6px 0 #000, 6px 6px 0 #000,
+      -6px 0px 0 #000, 6px 0px 0 #000,
+      0px -6px 0 #000, 0px 6px 0 #000,
+      -5px -5px 0 #000, 5px -5px 0 #000,
+      -5px 5px 0 #000, 5px 5px 0 #000,
+      0px 10px 30px rgba(0,0,0,0.8)
+    `,
+    // Add padding to the heading itself
+    padding: '20px', // Adjust this value as needed for your desired padding
+    boxSizing: 'border-box',
+  } as CSSProperties,
+};
 
 export default function EasyWorshipView() {
-  const [lyrics, setLyrics] = useState(""); // Ang text nga gaka-display karon
-  const [fontSize, setFontSize] = useState(60);
-  const [bgType, setBgType] = useState<BackgroundType>('none');
-  const [isVisible, setIsVisible] = useState(false); // Tig-kontrol sa Fade animation
+  const [lyrics, setLyrics] = useState("");
+  const [fontSize, setFontSize] = useState(() => {
+    const saved = localStorage.getItem('ew_fontSize');
+    return saved ? parseInt(saved) : 90;
+  });
+  // State to hold the background type and color, synced from the controller
+  const [background, setBackground] = useState<{ type: string; color?: string }>({
+    type: localStorage.getItem('ew_background_type') || 'none',
+    color: localStorage.getItem('ew_background_color') || '#000000',
+  });
+
+
+  // New text styling states matching the controller
+  const[fontFamily, setFontFamily] = useState(() => localStorage.getItem('ew_fontFamily') || "'Oswald', sans-serif");
+  const [isBold, setIsBold] = useState(() => {
+    const saved = localStorage.getItem('ew_isBold');
+    return saved ? JSON.parse(saved) : true;
+  });
+  const [isUppercase, setIsUppercase] = useState(() => {
+    const saved = localStorage.getItem('ew_isUppercase');
+    return saved ? JSON.parse(saved) : true;
+  });
+  const [hasOutline, setHasOutline] = useState(() => {
+    const saved = localStorage.getItem('ew_hasOutline');
+    return saved ? JSON.parse(saved) : true;
+  });
+
+  const lyricsRef = useRef("");
+
+  const applyData = (data: any) => {
+    if (data.fontSize) setFontSize(data.fontSize);
+    // Update background type and color
+    if (data.background !== undefined) {
+      if (typeof data.background === 'string' && data.background.startsWith('#')) {
+        setBackground({ type: 'custom', color: data.background });
+      } else {
+        setBackground({ type: data.background });
+      }
+    }
+    if (data.fontFamily !== undefined) setFontFamily(data.fontFamily);
+    if (data.isBold !== undefined) setIsBold(data.isBold);
+    if (data.isUppercase !== undefined) setIsUppercase(data.isUppercase);
+    if (data.hasOutline !== undefined) setHasOutline(data.hasOutline);
+
+    const newText: string = data.text ?? "";
+      lyricsRef.current = newText;
+      setLyrics(newText);
+  };
 
   useEffect(() => {
-    const syncDataFromStorage = () => {
-      const dataString = localStorage.getItem('jamc_live_display');
-      if (!dataString) return;
-
+    const sync = async () => {
       try {
-        const data = JSON.parse(dataString);
-        const newText = data.text || "";
-
-        // --- ANIMATION LOGIC ---
-        
-        // 1. Kung ang text parehas ra sa gaka-display, i-update lang ang settings (size/bg)
-        if (newText === lyrics) {
-           if (data.fontSize) setFontSize(data.fontSize);
-           if (data.background) setBgType(data.background);
-           return;
-        }
-
-        // 2. Transition Process: Fade Out -> Change Text -> Fade In
-        setIsVisible(false); // Sugod sa Fade Out
-
-        setTimeout(() => {
-          setLyrics(newText);
-          if (data.fontSize) setFontSize(data.fontSize);
-          if (data.background) setBgType(data.background);
-
-          // 3. Kung naay text, i-Fade In. Kung wala (Clear), pabilin nga hide.
-          if (newText.trim() !== "") {
-            setIsVisible(true);
-          }
-        }, 300); // Hulaton ang 300ms (Fade out duration) una ilisan ang text
-
-      } catch (e) {
-        console.error("Sync error", e);
-      }
+        const res = await fetch('/obs-state');
+        if (res.ok) { applyData(await res.json()); return; }
+      } catch {}
+      // Fallback: localStorage (for pop-out window in same browser)
+      const raw = localStorage.getItem('jamc_live_display');
+      if (raw) { try { applyData(JSON.parse(raw)); } catch {} }
     };
 
-    const interval = setInterval(syncDataFromStorage, 300);
-    window.addEventListener('storage', syncDataFromStorage);
-    syncDataFromStorage();
+    const interval = setInterval(sync, 300);
+    window.addEventListener('storage', () => {
+      const raw = localStorage.getItem('jamc_live_display');
+      if (raw) { try { applyData(JSON.parse(raw)); } catch {} }
+    });
+    sync();
 
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', syncDataFromStorage);
-    };
-  }, [lyrics]); // I-watch ang lyrics state para sa comparison
+    return () => clearInterval(interval);
+  }, []);
 
-  const getBgClass = (type: BackgroundType) => {
-    if (type === 'praise') return 'bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 animate-gradient-fast';
-    if (type === 'worship') return 'bg-gradient-to-t from-black via-indigo-950 to-black animate-gradient-slow';
-    if (type === 'green') return 'bg-[#00FF00]';
-    return 'bg-black';
+  // Persist settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('ew_fontSize', fontSize.toString());
+    localStorage.setItem('ew_background_type', background.type);
+    if (background.type === 'custom' && background.color) {
+      localStorage.setItem('ew_background_color', background.color);
+    }
+    localStorage.setItem('ew_fontFamily', fontFamily);
+    localStorage.setItem('ew_isBold', JSON.stringify(isBold));
+    localStorage.setItem('ew_isUppercase', JSON.stringify(isUppercase));
+    localStorage.setItem('ew_hasOutline', JSON.stringify(hasOutline));
+  }, [fontSize, background, fontFamily, isBold, isUppercase, hasOutline]);
+
+
+  // Function to determine background styles
+  const getBgStyle = (): CSSProperties => {
+    if (background.type === 'praise') return { backgroundImage: 'linear-gradient(to bottom right, #4f46e5, #7c3aed, #4f46e5)' };
+    if (background.type === 'worship') return { backgroundImage: 'linear-gradient(to top, #000000, #171717, #000000)' };
+    if (background.type === 'green') return { backgroundColor: '#00FF00' };
+    if (background.type === 'custom' && background.color) return { backgroundColor: background.color };
+    return { backgroundColor: '#000' }; // Default to black
   };
 
   return (
-    <div className={`w-screen h-screen flex flex-col justify-center items-center p-10 md:p-24 overflow-hidden select-none transition-colors duration-1000 ${getBgClass(bgType)}`}>
-      
-      {/* CONNECTION INDICATOR (Makita lang kung walay kanta) */}
-      {!isVisible && lyrics === "" && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-white font-black uppercase tracking-[1em] text-xs opacity-10 animate-pulse">
-                JAMC SYSTEM CONNECTED
-            </p>
-        </div>
-      )}
-
-      {/* LYRICS WITH SMOOTH ANIMATION */}
-      <div 
-        className={`transition-all duration-500 ease-in-out transform w-full max-w-[95%] flex justify-center relative z-10 ${
-          isVisible 
-            ? 'opacity-100 scale-100 translate-y-0' // Fade In + Normal Scale
-            : 'opacity-0 scale-95 translate-y-2'    // Fade Out + Gamayng Slide
-        }`}
+    <div style={{ ...styles.container, ...getBgStyle() }}>
+      <h1
+        style={{
+          ...styles.heading,
+          fontSize: `${fontSize}px`,
+          fontFamily: fontFamily,
+        }}
       >
-        <h1 
-          className="text-white text-center font-bold leading-[1.2] tracking-wide"
-          style={{ 
-            fontSize: `${fontSize}px`,
-            textShadow: '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)' 
-          }}
-        >
-          <span className="whitespace-pre-wrap">{lyrics}</span>
-        </h1>
-      </div>
+        <span style={{ whiteSpace: 'pre-wrap', padding: '20px', boxSizing: 'border-box', display: 'inline-block' }}>{lyrics}</span>
+      </h1>
     </div>
   );
 }

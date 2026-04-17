@@ -39,7 +39,7 @@ export default function EasyWorshipController() {
 
   const [liveText, setLiveText] = useState(""); 
   const [lastLiveText, setLastLiveText] = useState(""); 
-  const[previewFontSize, setPreviewFontSize] = useState(100);
+  const[previewFontSize, setPreviewFontSize] = useState(130);
   const [bgType, setBgType] = useState<BackgroundType>('green');
   const [showMonitor, setShowMonitor] = useState(true);
   const[liveSlideIndex, setLiveSlideIndex] = useState<number | null>(null);

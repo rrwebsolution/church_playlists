@@ -81,30 +81,49 @@ export default function EasyWorshipController() {
         const screenDetails = await (window as any).getScreenDetails();
         const screens: any[] = screenDetails.screens;
         const projector = screens.find((s: any) => !s.isPrimary) ?? screens[0];
+        
+        // Construct the full URL for the projector using the current origin
+        const projectorUrl = `${window.location.origin}/projector`;
+
         projectorWindowRef.current = window.open(
-          '/projector', 'projector_output',
+          projectorUrl,
+          'projector_output',
           `left=${projector.availLeft},top=${projector.availTop},width=${projector.availWidth},height=${projector.availHeight}`
         );
+        
         // Request fullscreen immediately after opening the window
-        if (projectorWindowRef.current?.document?.documentElement) {
-          projectorWindowRef.current.document.documentElement.requestFullscreen().catch(err => console.log("Fullscreen request failed:", err));
+        if (projectorWindowRef.current) {
+          // Cast to Window & any to access requestFullscreen
+          (projectorWindowRef.current as Window & typeof globalThis & { requestFullscreen: () => Promise<void> }).requestFullscreen().catch(err => console.log("Fullscreen request failed:", err));
         }
       } else {
         // Fallback for browsers that don't support getScreenDetails
-        projectorWindowRef.current = window.open('/projector', 'projector_output', 'width=1280,height=720');
+        const fallbackProjectorUrl = `${window.location.origin}/projector`;
+        projectorWindowRef.current = window.open(
+          fallbackProjectorUrl,
+          'projector_output',
+          'width=1280,height=720'
+        );
         // Attempt fullscreen on fallback if possible (less reliable)
         if (projectorWindowRef.current) {
            // Direct fullscreen request on the new window might not be reliable
            // It's better handled by user interaction within that window if possible.
+           // (projectorWindowRef.current as Window & typeof globalThis & { requestFullscreen: () => Promise<void> }).requestFullscreen().catch(err => console.log("Fullscreen request failed:", err));
         }
       }
     } catch (err) {
       console.error("Error opening projector window:", err);
       // Fallback if screenDetails or fullscreen fails
-      projectorWindowRef.current = window.open('/projector', 'projector_output', 'width=1280,height=720');
+      const fallbackProjectorUrl = `${window.location.origin}/projector`;
+      projectorWindowRef.current = window.open(
+        fallbackProjectorUrl,
+        'projector_output',
+        'width=1280,height=720'
+      );
        // Attempt fullscreen on fallback if possible
        if (projectorWindowRef.current) {
           // Direct fullscreen request on the new window might not be reliable
+          // (projectorWindowRef.current as Window & typeof globalThis & { requestFullscreen: () => Promise<void> }).requestFullscreen().catch(err => console.log("Fullscreen request failed:", err));
        }
     }
   };

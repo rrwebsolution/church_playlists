@@ -1,8 +1,8 @@
-import path from "path"
-import tailwindcss from "@tailwindcss/vite"
-import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
-import type { Plugin } from "vite"
+import path from "path";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import type { Plugin } from "vite";
 
 // In-memory state store so OBS Browser Source can sync without a backend
 function obsStatePlugin(): Plugin {
@@ -50,6 +50,20 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    host: true
-  }
-})
+    host: true,
+    // This is a common addition for SPA routing on platforms like Vercel
+    // It ensures that when you hit a route like /projector directly,
+    // Vite serves your index.html, allowing React Router (or similar) to handle it.
+    // This might not be strictly necessary if Vercel handles routing correctly,
+    // but it's a good practice for SPAs.
+    // historyApiFallback: {
+    //   index: '/index.html',
+    // },
+  },
+  // Optional: If you need to configure build options for deployment
+  // build: {
+  //   outDir: 'dist', // Default
+  //   // If you encounter issues with assets, you might need to adjust this
+  //   // assetsPublicPath: '/', // Default
+  // },
+});

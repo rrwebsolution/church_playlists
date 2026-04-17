@@ -90,23 +90,36 @@ export default function EasyWorshipView() {
   useEffect(() => {
     const sync = async () => {
       try {
+        // Fetch from the deployed URL for obs-state
         const res = await fetch('/obs-state');
         if (res.ok) { applyData(await res.json()); return; }
-      } catch {}
+      } catch {
+        // If fetching from relative path fails, try localStorage fallback
+      }
       // Fallback: localStorage (for pop-out window in same browser)
       const raw = localStorage.getItem('jamc_live_display');
       if (raw) { try { applyData(JSON.parse(raw)); } catch {} }
     };
 
+    // Fetch initial state
+    sync();
+
+    // Set up interval to poll for updates
     const interval = setInterval(sync, 300);
+
+    // Listen for storage events from other tabs/windows (important for the popped-out projector)
     window.addEventListener('storage', () => {
       const raw = localStorage.getItem('jamc_live_display');
       if (raw) { try { applyData(JSON.parse(raw)); } catch {} }
     });
-    sync();
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(interval);
+      // Clean up the event listener when the component unmounts
+      // NOTE: If you need to remove the listener, store the handler function and use removeEventListener.
+      // For simplicity in this example, it's omitted, but be mindful in complex apps.
+    };
+  }, []); // Empty dependency array means this runs only on mount and unmount
 
   // Persist settings to localStorage
   useEffect(() => {

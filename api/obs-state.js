@@ -14,7 +14,11 @@ export default function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    state = { ...state, ...req.body };
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch {}
+    }
+    state = { ...state, ...body };
     res.status(200).json({ ok: true });
     return;
   }

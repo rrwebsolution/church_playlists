@@ -158,4 +158,4 @@ export default function EasyWorshipView() {
       </h1>
     </div>
   );
-}
+}    

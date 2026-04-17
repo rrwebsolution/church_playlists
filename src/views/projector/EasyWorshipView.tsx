@@ -91,7 +91,7 @@ export default function EasyWorshipView() {
     const sync = async () => {
       try {
         // Fetch from the deployed URL for obs-state
-        const res = await fetch('/obs-state');
+        const res = await fetch('/api/obs-state');
         if (res.ok) { applyData(await res.json()); return; }
       } catch {
         // If fetching from relative path fails, try localStorage fallback

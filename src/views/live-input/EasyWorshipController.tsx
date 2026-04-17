@@ -170,7 +170,7 @@ export default function EasyWorshipController() {
 
     const data = { text, fontSize: size, background: backgroundData, fontFamily, isBold, isUppercase, hasOutline, updatedAt: Date.now() };
     localStorage.setItem('jamc_live_display', JSON.stringify(data));
-    fetch('/obs-state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
+    fetch('/api/obs-state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).catch(() => {});
     // Removed: await instance.post('obs/update', data);
   };
 

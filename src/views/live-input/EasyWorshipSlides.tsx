@@ -1,4 +1,4 @@
-import { LayoutGrid, Presentation, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, Presentation, FileText, ChevronLeft, ChevronRight, MonitorOff, RotateCcw } from 'lucide-react';
 
 interface Slide {
   label: string | null;
@@ -8,10 +8,12 @@ interface Slide {
 interface SlidesProps {
   slides: Slide[];
   liveSlideIndex: number | null;
-  isBlackout: boolean;
+  isBlackout: boolean; 
   onSlideClick: (text: string, index: number) => void;
-  onShowMonitor: () => void;
-  showMonitor: boolean;
+  // onShowMonitor: () => void; // REMOVED
+  // showMonitor: boolean;      // REMOVED
+  onBlackoutToggle: () => void; 
+  isOutputCleared: boolean;     
 }
 
 const getFontSizeClass = (text: string): string => {
@@ -44,9 +46,15 @@ const getLabelBasedColors = (label: string | null): string => {
 };
 
 
-export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideClick }: SlidesProps) => {
+export const EasyWorshipSlides = ({ 
+  slides, 
+  liveSlideIndex, 
+  isBlackout, 
+  onSlideClick, 
+  onBlackoutToggle, 
+  isOutputCleared   
+}: SlidesProps) => {
   
-  // 🔥 LOGIC PARA SA PREV/NEXT BUTTONS 🔥
   const handlePrevNext = (direction: 'prev' | 'next') => {
     if (slides.length === 0) return;
     
@@ -81,8 +89,26 @@ export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideC
           </div>
         </div>
 
-        {/* 🔥 BAG-ONG PREV/NEXT BUTTONS 🔥 */}
+        {/* 🔥 GI-BALHIN NGA CLEAR OUTPUT UG PREV/NEXT BUTTONS 🔥 */}
         <div className="flex items-center gap-2">
+            {/* Clear Output Button */}
+            <button 
+                onClick={onBlackoutToggle} 
+                className={`p-3 rounded-full font-black uppercase tracking-widest text-[10px] transition-all flex items-center justify-center gap-2 border ${
+                    isOutputCleared 
+                    ? 'bg-red-600 text-white border-red-600 shadow-lg shadow-red-600/30 animate-pulse' 
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-red-500 border-red-100 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20'
+                }`}
+                title={isOutputCleared ? "Restore Lyrics" : "Clear Output"}
+            >
+                {isOutputCleared ? (
+                    <RotateCcw className="w-5 h-5" /> 
+                ) : (
+                    <MonitorOff className="w-5 h-5" /> 
+                )}
+            </button>
+
+            {/* Previous Button */}
             <button 
                 onClick={() => handlePrevNext('prev')}
                 disabled={slides.length === 0}
@@ -90,6 +116,7 @@ export const EasyWorshipSlides = ({ slides, liveSlideIndex, isBlackout, onSlideC
             >
                 <ChevronLeft className="w-5 h-5" />
             </button>
+            {/* Next Button */}
             <button 
                 onClick={() => handlePrevNext('next')}
                 disabled={slides.length === 0}

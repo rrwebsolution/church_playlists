@@ -39,10 +39,10 @@ export default function EasyWorshipController() {
 
   const [liveText, setLiveText] = useState(""); 
   const [lastLiveText, setLastLiveText] = useState(""); 
-  const[previewFontSize, setPreviewFontSize] = useState(130);
+  const [previewFontSize, setPreviewFontSize] = useState(100);
   const [bgType, setBgType] = useState<BackgroundType>('green');
   const [showMonitor, setShowMonitor] = useState(true);
-  const[liveSlideIndex, setLiveSlideIndex] = useState<number | null>(null);
+  const [liveSlideIndex, setLiveSlideIndex] = useState<number | null>(null);
   const nodeRef = useRef(null);
 
   const [currentArchiveId, setCurrentArchiveId] = useState<string | null>(null);
@@ -65,11 +65,21 @@ export default function EasyWorshipController() {
     return () => clearTimeout(draftTimer);
   }, [inputTitle, inputText]);
 
+  // Determine if the output screen is currently cleared
+  const isOutputCleared = liveText === "";
+
 
   const broadcastData = async (text: string, size: number, bg: string) => {
     setLiveText(text); 
     const data = { text, fontSize: size, background: bg, updatedAt: Date.now() };
-    try { await instance.post('/obs/update', data); } catch (err) {}
+    try { 
+      // 🔥 Note: Your backend route is /api/obs/update, not /obs/update
+      // Ensure you are using the correct URL for your backend's API endpoint
+      await instance.post('obs/update', data); 
+    } catch (err) {
+      console.error("Failed to broadcast data:", err);
+      Toast.fire({ icon: 'error', title: 'Broadcast Failed!' });
+    }
   };
 
   const quickSlides = useMemo(() => {
@@ -109,7 +119,10 @@ export default function EasyWorshipController() {
   
   // --- 🔥 GI-UPDATE NGA SAVE LOGIC (NGA NAAY AUTO-CLEAR) 🔥 ---
   const handleSaveText = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim()) {
+      Toast.fire({ icon: 'warning', title: 'Editor is empty!' });
+      return;
+    }
 
     // KUNG RESTORED NI NGA KANTA (Update existing)
     if (currentArchiveId) {
@@ -177,8 +190,13 @@ export default function EasyWorshipController() {
   };
 
   const handleBlackoutToggle = () => {
-    if (liveText !== "") { setLastLiveText(liveText); broadcastData("", previewFontSize, bgType); } 
-    else if (lastLiveText !== "") { broadcastData(lastLiveText, previewFontSize, bgType); }
+    if (!isOutputCleared) { // If lyrics are currently visible (not cleared)
+      setLastLiveText(liveText); // Save current live text
+      broadcastData("", previewFontSize, bgType); // Clear output
+    } else { // If output is cleared
+      broadcastData(lastLiveText, previewFontSize, bgType); // Restore last live text
+      setLastLiveText(""); // Clear last live text after restoring
+    }
   };
 
   return (
@@ -232,17 +250,22 @@ export default function EasyWorshipController() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start w-full mx-auto">
         <div className="w-full">
           <EasyWorshipEditor 
-            title={inputTitle} text={inputText} isOutputCleared={liveText === ""} 
+            title={inputTitle} text={inputText} 
             onTitleChange={setInputTitle} onTextChange={setInputText} 
-            onClearEditor={handleClearEditor} onSave={handleSaveText} onBlackoutToggle={handleBlackoutToggle} 
+            onClearEditor={handleClearEditor} onSave={handleSaveText}
           />
         </div>
 
         <div className="w-full">
           <EasyWorshipSlides 
-            slides={quickSlides} liveSlideIndex={liveSlideIndex} isBlackout={liveText === ""} 
+            slides={quickSlides} 
+            liveSlideIndex={liveSlideIndex} 
+            isBlackout={liveText === ""} 
             onSlideClick={(text, idx) => { setLiveSlideIndex(idx); broadcastData(text, previewFontSize, bgType); }} 
-            onShowMonitor={() => setShowMonitor(true)} showMonitor={showMonitor}
+            // 🔥 REMOVED: onShowMonitor={() => setShowMonitor(true)} 
+            // 🔥 REMOVED: showMonitor={showMonitor}
+            onBlackoutToggle={handleBlackoutToggle} 
+            isOutputCleared={isOutputCleared}       
           />
         </div>
       </div>

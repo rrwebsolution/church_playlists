@@ -1,22 +1,20 @@
-import { FileText, Trash2, Save, MonitorOff, RotateCcw } from 'lucide-react';
+import { FileText, Trash2, Save } from 'lucide-react'; // MonitorOff ug RotateCcw gikuha
 import { useRef } from 'react';
 
 interface EditorProps {
   title: string;
   text: string;
-  isOutputCleared: boolean;
   onTitleChange: (val: string) => void;
   onTextChange: (val: string) => void;
   onClearEditor: () => void;
   onSave: () => void;
-  onBlackoutToggle: () => void;
+  // isOutputCleared ug onBlackoutToggle gikuha na dinhi
 }
 
 export const EasyWorshipEditor = ({
-  title, text, isOutputCleared, onTitleChange, onTextChange, onClearEditor, onSave, onBlackoutToggle
+  title, text, onTitleChange, onTextChange, onClearEditor, onSave // Gikuha ang isOutputCleared, onBlackoutToggle
 }: EditorProps) => {
   
-  // Refs para ma-sync ang scroll sa Line Numbers ug Textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
 
@@ -26,22 +24,18 @@ export const EasyWorshipEditor = ({
     }
   };
 
-  // 🔥 GI-UPDATE NGA LOGIC: Pag-ihap per BLOCK/SLIDE (Dili per line)
   let currentBlockNumber = 1;
   let isNewBlock = true;
 
   const lineNumbers = text.split('\n').map((line) => {
     if (line.trim() === '') {
-      // Kung blangko ang linya, i-set nga ang sunod nga naay text kay bag-ong block na
       isNewBlock = true;
       return null;
     } else {
       if (isNewBlock) {
-        // Unang linya sa block -> Butangan og numero
         isNewBlock = false;
         return currentBlockNumber++;
       } else {
-        // Sumpay nga linya sa block -> Walay numero
         return null; 
       }
     }
@@ -115,33 +109,14 @@ export const EasyWorshipEditor = ({
         </div>
       </div>
 
-      {/* --- ACTION BUTTONS --- */}
-      <div className="grid grid-cols-2 gap-5 mt-8">
+      {/* --- ACTION BUTTONS (Gikuha na ang Clear Output) --- */}
+      <div className="grid grid-cols-1 gap-5 mt-8"> {/* Gihimong col-span-1 kay usa nalang ang button */}
         <button 
           onClick={onSave} 
           className="py-4.5 bg-indigo-500 text-white rounded-[1.25rem] font-black uppercase tracking-widest text-[10px] shadow-xl shadow-indigo-500/20 hover:bg-indigo-600 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-3 group"
         >
           <Save className="w-4 h-4 group-hover:scale-110 transition-transform" /> 
           Save Archive
-        </button>
-        
-        <button 
-          onClick={onBlackoutToggle} 
-          className={`py-4.5 rounded-[1.25rem] font-black uppercase tracking-widest text-[10px] transition-all flex items-center justify-center gap-3 border-2 ${
-            isOutputCleared 
-              ? 'bg-red-600 text-white border-red-600 shadow-xl shadow-red-600/20 animate-pulse' 
-              : 'bg-white dark:bg-zinc-800 text-red-500 border-red-100 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20'
-          }`}
-        >
-          {isOutputCleared ? (
-            <>
-              <RotateCcw className="w-4 h-4" /> Restore Lyrics
-            </>
-          ) : (
-            <>
-              <MonitorOff className="w-4 h-4" /> Clear Output
-            </>
-          )}
         </button>
       </div>
 

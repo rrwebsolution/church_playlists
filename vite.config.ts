@@ -10,6 +10,13 @@ function obsStatePlugin(): Plugin {
   return {
     name: 'obs-state',
     configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.url === '/projector' || req.url?.startsWith('/projector?')) {
+          req.url = '/index.html';
+        }
+        next();
+      });
+
       server.middlewares.use('/obs-state', (req, res) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');

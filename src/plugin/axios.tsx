@@ -26,7 +26,7 @@ instance.interceptors.request.use(
 
         // KINI ANG GIDUGANG:
         // Ayaw i-cancel kung ang URL kay para sa obs update
-        const isObsUpdate = config.url?.includes('obs/update');
+        const isObsUpdate = config.url?.includes('obs/update') || config.url?.includes('obs-state');
 
         if (pendingRequests.has(requestKey) && !isObsUpdate) {
             const controller = pendingRequests.get(requestKey);
@@ -34,9 +34,9 @@ instance.interceptors.request.use(
         }
 
         if (!isObsUpdate) {
-            const controller = new AbortController();
-            config.signal = controller.signal;
-            pendingRequests.set(requestKey, controller);
+          const controller = new AbortController();
+          config.signal = controller.signal;
+          pendingRequests.set(requestKey, controller);
         }
 
         return config;

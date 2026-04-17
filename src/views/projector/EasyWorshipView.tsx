@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 
-type BackgroundType = 'none' | 'praise' | 'worship' | 'green';
+type BackgroundType = 'none' | 'praise' | 'worship' | 'green' | 'video';
 
 export default function EasyWorshipView() {
-  const [lyrics, setLyrics] = useState(""); // Ang text nga gaka-display karon
+  const [lyrics, setLyrics] = useState("");
   const [fontSize, setFontSize] = useState(60);
   const [bgType, setBgType] = useState<BackgroundType>('none');
-  const [isVisible, setIsVisible] = useState(false); // Tig-kontrol sa Fade animation
+  const [fontFamily, setFontFamily] = useState('Arial, sans-serif');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
     const syncDataFromStorage = () => {
@@ -17,28 +19,27 @@ export default function EasyWorshipView() {
         const data = JSON.parse(dataString);
         const newText = data.text || "";
 
-        // --- ANIMATION LOGIC ---
-        
-        // 1. Kung ang text parehas ra sa gaka-display, i-update lang ang settings (size/bg)
         if (newText === lyrics) {
-           if (data.fontSize) setFontSize(data.fontSize);
-           if (data.background) setBgType(data.background);
-           return;
+          if (data.fontSize) setFontSize(data.fontSize);
+          if (data.background) setBgType(data.background);
+          if (data.fontFamily) setFontFamily(data.fontFamily);
+          if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
+          return;
         }
 
-        // 2. Transition Process: Fade Out -> Change Text -> Fade In
-        setIsVisible(false); // Sugod sa Fade Out
+        setIsVisible(false);
 
         setTimeout(() => {
           setLyrics(newText);
           if (data.fontSize) setFontSize(data.fontSize);
           if (data.background) setBgType(data.background);
+          if (data.fontFamily) setFontFamily(data.fontFamily);
+          if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
 
-          // 3. Kung naay text, i-Fade In. Kung wala (Clear), pabilin nga hide.
           if (newText.trim() !== "") {
             setIsVisible(true);
           }
-        }, 300); // Hulaton ang 300ms (Fade out duration) una ilisan ang text
+        }, 300);
 
       } catch (e) {
         console.error("Sync error", e);
@@ -53,7 +54,7 @@ export default function EasyWorshipView() {
       clearInterval(interval);
       window.removeEventListener('storage', syncDataFromStorage);
     };
-  }, [lyrics]); // I-watch ang lyrics state para sa comparison
+  }, [lyrics]);
 
   const getBgClass = (type: BackgroundType) => {
     if (type === 'praise') return 'bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 animate-gradient-fast';
@@ -63,30 +64,44 @@ export default function EasyWorshipView() {
   };
 
   return (
-    <div className={`w-screen h-screen flex flex-col justify-center items-center p-10 md:p-24 overflow-hidden select-none transition-colors duration-1000 ${getBgClass(bgType)}`}>
-      
-      {/* CONNECTION INDICATOR (Makita lang kung walay kanta) */}
+    <div className={`w-screen h-screen flex flex-col justify-center items-center p-10 md:p-24 overflow-hidden select-none transition-colors duration-1000 relative ${getBgClass(bgType)}`}>
+
+      {/* Video background */}
+      {bgType === 'video' && videoUrl && (
+        <video
+          key={videoUrl}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover z-0"
+          src={videoUrl}
+        />
+      )}
+
       {!isVisible && lyrics === "" && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-white font-black uppercase tracking-[1em] text-xs opacity-10 animate-pulse">
-                JAMC SYSTEM CONNECTED
-            </p>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <p className="text-white font-black uppercase tracking-[1em] text-xs opacity-10 animate-pulse">
+            JAMC SYSTEM CONNECTED
+          </p>
         </div>
       )}
 
-      {/* LYRICS WITH SMOOTH ANIMATION */}
-      <div 
+      <div
         className={`transition-all duration-500 ease-in-out transform w-full max-w-[95%] flex justify-center relative z-10 ${
-          isVisible 
-            ? 'opacity-100 scale-100 translate-y-0' // Fade In + Normal Scale
-            : 'opacity-0 scale-95 translate-y-2'    // Fade Out + Gamayng Slide
+          isVisible
+            ? 'opacity-100 scale-100 translate-y-0'
+            : 'opacity-0 scale-95 translate-y-2'
         }`}
       >
-        <h1 
+        <h1
           className="text-white text-center font-bold leading-[1.2] tracking-wide"
-          style={{ 
+          style={{
             fontSize: `${fontSize}px`,
-            textShadow: '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)' 
+            fontFamily,
+            fontWeight: 'bold',
+            WebkitTextStroke: '3px #000',
+            textShadow: '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
           }}
         >
           <span className="whitespace-pre-wrap">{lyrics}</span>
@@ -94,4 +109,4 @@ export default function EasyWorshipView() {
       </div>
     </div>
   );
-}    
+}

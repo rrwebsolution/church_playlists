@@ -6,7 +6,7 @@ import type { Plugin } from "vite";
 
 // In-memory state store so OBS Browser Source can sync without a backend
 function obsStatePlugin(): Plugin {
-  let state = { text: '', fontSize: 60, background: 'none', updatedAt: 0 };
+  let state = { text: '', fontSize: 60, background: 'none', fontFamily: 'Roboto, sans-serif', videoUrl: '', updatedAt: 0 };
   return {
     name: 'obs-state',
     configureServer(server) {

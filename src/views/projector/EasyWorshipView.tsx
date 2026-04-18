@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type BackgroundType = 'none' | 'praise' | 'worship' | 'green' | 'video';
+
+const API_URL = (import.meta.env.VITE_URL || 'http://localhost:3000') + '/api/obs-state';
 
 export default function EasyWorshipView() {
   const [lyrics, setLyrics] = useState("");
@@ -10,52 +12,61 @@ export default function EasyWorshipView() {
   const [videoUrl, setVideoUrl] = useState('');
   const [isVisible, setIsVisible] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastUpdatedAt = useRef(0);
+  const lyricsRef = useRef(lyrics);
+  lyricsRef.current = lyrics;
 
+  const applyData = useCallback((data: any) => {
+    if (!data || (data.updatedAt && data.updatedAt <= lastUpdatedAt.current)) return;
+    if (data.updatedAt) lastUpdatedAt.current = data.updatedAt;
+
+    const newText = data.text ?? "";
+
+    if (newText === lyricsRef.current) {
+      if (data.fontSize) setFontSize(data.fontSize);
+      if (data.background) setBgType(data.background);
+      if (data.fontFamily) setFontFamily(data.fontFamily);
+      if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
+      return;
+    }
+
+    setIsVisible(false);
+    setTimeout(() => {
+      setLyrics(newText);
+      if (data.fontSize) setFontSize(data.fontSize);
+      if (data.background) setBgType(data.background);
+      if (data.fontFamily) setFontFamily(data.fontFamily);
+      if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
+      if (newText.trim() !== "") setIsVisible(true);
+    }, 300);
+  }, []);
+
+  // localStorage polling — fast path for same-browser projector window
   useEffect(() => {
-    const syncDataFromStorage = () => {
-      const dataString = localStorage.getItem('jamc_live_display');
-      if (!dataString) return;
+    const sync = () => {
+      const raw = localStorage.getItem('jamc_live_display');
+      if (!raw) return;
+      try { applyData(JSON.parse(raw)); } catch {}
+    };
+    const interval = setInterval(sync, 300);
+    window.addEventListener('storage', sync);
+    sync();
+    return () => { clearInterval(interval); window.removeEventListener('storage', sync); };
+  }, [applyData]);
 
+  // API polling — for OBS Browser Source (separate Chromium, no shared localStorage)
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
       try {
-        const data = JSON.parse(dataString);
-        const newText = data.text || "";
-
-        if (newText === lyrics) {
-          if (data.fontSize) setFontSize(data.fontSize);
-          if (data.background) setBgType(data.background);
-          if (data.fontFamily) setFontFamily(data.fontFamily);
-          if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
-          return;
-        }
-
-        setIsVisible(false);
-
-        setTimeout(() => {
-          setLyrics(newText);
-          if (data.fontSize) setFontSize(data.fontSize);
-          if (data.background) setBgType(data.background);
-          if (data.fontFamily) setFontFamily(data.fontFamily);
-          if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
-
-          if (newText.trim() !== "") {
-            setIsVisible(true);
-          }
-        }, 300);
-
-      } catch (e) {
-        console.error("Sync error", e);
-      }
+        const res = await fetch(API_URL);
+        if (res.ok) applyData(await res.json());
+      } catch {}
+      if (active) setTimeout(poll, 500);
     };
-
-    const interval = setInterval(syncDataFromStorage, 300);
-    window.addEventListener('storage', syncDataFromStorage);
-    syncDataFromStorage();
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', syncDataFromStorage);
-    };
-  }, [lyrics]);
+    poll();
+    return () => { active = false; };
+  }, [applyData]);
 
   const getBgClass = (type: BackgroundType) => {
     if (type === 'praise') return 'bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 animate-gradient-fast';

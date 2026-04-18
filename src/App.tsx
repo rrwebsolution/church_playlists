@@ -47,6 +47,7 @@ export default function App() {
   const location = useLocation();
 
   const isEasyWorshipPage = location.pathname.includes('/app/easyworship');
+  const isFooterHiddenRoute = location.pathname.includes('/app/ppt-presentation') || location.pathname.includes('/app/settings');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<'youtube' | 'link' | 'local'>('youtube');
   const [inputValue, setInputValue] = useState('');
@@ -437,7 +438,7 @@ export default function App() {
         </main>
 
         {isClient && currentSong && (
-          <div style={{ display: isEasyWorshipPage ? 'none' : 'block' }}>
+          <div style={{ display: (isEasyWorshipPage || isFooterHiddenRoute) ? 'none' : 'block' }}>
             <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".no-drag" bounds="parent" disabled={!isMobile}>
               <div ref={nodeRef} className={`fixed bottom-28 right-4 md:bottom-32 md:right-8 z-60 w-[70vw] max-w-[16rem] md:w-80 transition-opacity duration-500 ${showFloatingPlayer ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <div className="drag-handle absolute top-0 left-0 w-full p-2 flex justify-between items-center bg-black/80 z-20 border-b border-white/5" style={{ cursor: isMobile ? 'move' : 'default' }}>
@@ -455,23 +456,25 @@ export default function App() {
           </div>
         )}
 
-        {!isEasyWorshipPage && currentSong && !showFloatingPlayer && (
+        {!isEasyWorshipPage && !isFooterHiddenRoute && currentSong && !showFloatingPlayer && (
           <button onClick={() => setShowFloatingPlayer(true)} className="fixed bottom-44 right-8 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl animate-bounce hover:scale-110 active:scale-95 transition-all" title="Show Video Player"><Tv className="w-6 h-6" /></button>
         )}
 
         {!isEasyWorshipPage && (
-          <Footer 
-            currentSong={currentSong} 
-            isPlaying={isPlaying} 
-            setIsPlaying={handleTogglePlay} 
-            ytPlayer={ytPlayer} 
-            playlistSongs={currentSong ? folders.find(f => f.songs.some(s => s.id === currentSong.id))?.songs || [] : []}
-            onSongChange={handleSelectSong} 
-            volume={volume} 
-            setVolume={setVolume} 
-            hasInteracted={true} 
-            isSidebarCollapsed={isSidebarCollapsed} // 🔥 I-PASA ANG isSidebarCollapsed
-          />
+          <div className={isFooterHiddenRoute ? 'invisible pointer-events-none' : ''}>
+            <Footer
+              currentSong={currentSong}
+              isPlaying={isPlaying}
+              setIsPlaying={handleTogglePlay}
+              ytPlayer={ytPlayer}
+              playlistSongs={currentSong ? folders.find(f => f.songs.some(s => s.id === currentSong.id))?.songs || [] : []}
+              onSongChange={handleSelectSong}
+              volume={volume}
+              setVolume={setVolume}
+              hasInteracted={true}
+              isSidebarCollapsed={isSidebarCollapsed}
+            />
+          </div>
         )}
       </div>
     </div>

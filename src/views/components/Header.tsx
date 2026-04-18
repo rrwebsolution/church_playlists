@@ -1,8 +1,9 @@
 import { 
   Menu, Plus, Search, Sun, Moon, Laptop, 
-  ChevronDown, User, Headphones, DownloadCloud, X,
+  ChevronDown, User, Headphones, DownloadCloud, X, BookOpen,
 } from 'lucide-react';
 import React, { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 
 interface HeaderProps {
   activeMenu: string;
@@ -30,12 +31,14 @@ export const Header = ({
   bgPlayEnabled, setBgPlayEnabled,
   youtubeResults, setYoutubeResults, onImportYT, importingId
 }: HeaderProps) => {
+  const location = useLocation();
   
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false); // STATE PARA SA MOBILE SEARCH
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const isPptPresentationRoute = /\/app\/ppt-presentation\/?$/.test(location.pathname);
 
   // Reset keyboard cursor if list changes
   useEffect(() => { setSelectedIndex(0); }, [youtubeResults]);
@@ -72,6 +75,9 @@ export const Header = ({
 
   const getHeaderInfo = () => {
     const query = inputValue.trim();
+    if (isPptPresentationRoute) {
+      return { label: 'PPT Presentation', showInput: false };
+    }
     if (activeMenu === 'saved' || activeFolderId) {
       if (searchMode === 'youtube') return { placeholder: "Type a few letters to auto-search YouTube...", buttonText: isFetching ? "Searching..." : "Search YT", Icon: Search, showInput: true };
       if (searchMode === 'link') return { placeholder: "Paste YouTube URL here...", buttonText: isFetching ? "Fetching..." : "Add Link", Icon: Plus, showInput: true };
@@ -129,7 +135,7 @@ export const Header = ({
             <Menu className="w-5 h-5" />
           </button>
           <h2 className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-500 hidden sm:block">
-            {activeMenu === 'saved' ? "Saved Songs" : activeFolderId ? "Folder Explorer" : "Playlist Manager"}
+            {isPptPresentationRoute ? "PPT Presentation" : activeMenu === 'saved' ? "Saved Songs" : activeFolderId ? "Folder Explorer" : "Playlist Manager"}
           </h2>
         </div>
 
@@ -141,6 +147,15 @@ export const Header = ({
             : 'hidden'
           }
         `}>
+          {isPptPresentationRoute && (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event('open-ppt-bible-modal'))}
+              className="w-full md:w-auto flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-emerald-600 transition-all"
+            >
+              <BookOpen className="w-4 h-4" /> Bible Verse
+            </button>
+          )}
           {info.showInput && (
             <form onSubmit={onSubmit} className="flex w-full group relative shadow-sm rounded-2xl">
               {(activeFolderId || activeMenu === 'saved') && (

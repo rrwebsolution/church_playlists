@@ -40,8 +40,29 @@ export interface PptPresentationFile {
   uploadedAt: string;
   thumbnailUrl?: string;
   sourceText?: string;
+  slideData?: string;
   templateId?: string;
+  sourceType?: 'generated' | 'uploaded';
+  originalFileName?: string;
 }
+
+const createUniquePresentationId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const normalizePresentationIds = (items: PptPresentationFile[]) => {
+  const seen = new Set<string>();
+
+  return items.map((item) => {
+    const nextId = item.id && !seen.has(item.id) ? item.id : createUniquePresentationId();
+    seen.add(nextId);
+    return { ...item, id: nextId };
+  });
+};
 
 export default function App() {
   const location = useLocation();
@@ -98,7 +119,13 @@ export default function App() {
   // BAG-ONG STATE SA APP.TSX PARA SA PPT PRESENTATIONS
   const [presentations, setPresentations] = useState<PptPresentationFile[]>(() => {
     const saved = localStorage.getItem('jamc_ppt_presentations');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+
+    try {
+      return normalizePresentationIds(JSON.parse(saved));
+    } catch {
+      return [];
+    }
   });
 
   useEffect(() => {

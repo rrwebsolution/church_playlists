@@ -3,6 +3,7 @@ import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { ChevronLeft, MonitorDot, Layers, FileText, ChevronRight } from 'lucide-react';
 import type { PptPresentationFile } from '@/App';
 import { PPT_TEMPLATES } from '../Pptpresenatation'; 
+import { deserializeSlides, htmlToPlainText, plainTextToHtml } from '@/lib/ppt';
 
 export default function PptViewer() {
   const { id } = useParams<{ id: string }>();
@@ -21,21 +22,23 @@ export default function PptViewer() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
   const slides = useMemo(() => {
-    if (presentation?.sourceText) {
-      const rawSlides = presentation.sourceText.split(/\n\s*\n/).filter(block => block.trim().length > 0);
-      return rawSlides.map((slideText) => {
-        const lines = slideText.split('\n');
+    if (presentation?.sourceText || presentation?.slideData) {
+      const parsedSlides = deserializeSlides(presentation.slideData, presentation.sourceText);
+      return parsedSlides.map((slideData) => {
+        const plainText = slideData.text || htmlToPlainText(slideData.html);
+        const lines = plainText.split('\n');
         const firstLine = lines[0].trim();
         const headerMatch = firstLine.match(/^\[?(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Tag|Ending|Instrumental)[^\]]*\]?:?$/i);
         
         let label = headerMatch ? headerMatch[1].replace(/[\[\]:]/g, '') : null;
-        let content = headerMatch && lines.length > 1 ? lines.slice(1).join('\n').trim() : slideText.trim();
+        let content = headerMatch && lines.length > 1 ? lines.slice(1).join('\n').trim() : plainText.trim();
+        const html = slideData.html || plainTextToHtml(slideData.text);
 
-        return { label, content };
+        return { label, content, html, format: slideData.format, imageUrl: slideData.imageUrl };
       });
     }
     return [];
-  }, [presentation?.sourceText]);
+  }, [presentation?.slideData, presentation?.sourceText]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -118,10 +121,10 @@ export default function PptViewer() {
         
         {presentation.sourceText ? (
           /* 🔥 GI-AYO: Gitangtang ang secondary template.bg ug shadow 🔥 */
-          <div className={`w-full h-full flex flex-col items-center justify-center p-12 md:p-20 text-center relative transition-all duration-500 ${template.text} ${template.font}`}>
+          <div className={`w-full h-full flex flex-col items-center justify-center p-8 md:p-14 text-center relative transition-all duration-500 ${template.text} ${template.font}`}>
             
             {/* Slide Content */}
-            <div className="relative z-10 w-full animate-in zoom-in-95 fade-in duration-500">
+            <div className="relative z-10 w-full max-w-6xl aspect-video mx-auto flex flex-col items-center justify-center animate-in zoom-in-95 fade-in duration-500">
               {currentSlide ? (
                 <>
                   {currentSlide.label && (
@@ -129,8 +132,17 @@ export default function PptViewer() {
                       {currentSlide.label}
                     </span>
                   )}
-                  <div className="text-4xl md:text-7xl font-black leading-[1.1] whitespace-pre-wrap drop-shadow-2xl">
-                    {currentSlide.content}
+                  {currentSlide.imageUrl && (
+                    <img src={currentSlide.imageUrl} alt={presentation.name} className="w-full max-h-[45vh] object-contain mb-8 rounded-3xl shadow-2xl" />
+                  )}
+                  <div
+                    className="leading-[1.1] drop-shadow-2xl w-full"
+                    style={{
+                      fontSize: `${Math.max(30, currentSlide.format.fontSize * 2.1)}px`,
+                      fontFamily: currentSlide.format.fontFamily,
+                    }}
+                    dangerouslySetInnerHTML={{ __html: currentSlide.html || plainTextToHtml(currentSlide.content) }}
+                  >
                   </div>
                 </>
               ) : (

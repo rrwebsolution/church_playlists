@@ -188,6 +188,15 @@ export default function App() {
     }
   }, [currentSong, ytPlayer, initPlayer]);
 
+  // When currentSong is cleared, reset the player so it re-initializes on next selection
+  useEffect(() => {
+    if (!currentSong) {
+      try { ytPlayerRef.current?.pauseVideo?.(); } catch (e) {}
+      ytPlayerRef.current = null;
+      setYtPlayer(null);
+    }
+  }, [currentSong]);
+
   const handleVanillaSongEnded = (playerInstance: any) => {
     if (!autoPlayRef.current) { 
       setIsPlaying(false); 

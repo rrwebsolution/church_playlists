@@ -7,6 +7,7 @@ export interface Song {
   file_path?: string | null; // Importante ni
   lyrics?: string;
   chords?: string;
+  offset?: number;
 }
 
 export interface PlaylistFolder {

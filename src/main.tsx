@@ -12,7 +12,7 @@ const History = lazy(() => import('./views/history/History.tsx'));
 const Settings = lazy(() => import('./views/settings/Settings.tsx')); 
 
 // EasyWorship Components
-const EasyWorshipController = lazy(() => import('./views/live-input/EasyWorshipController.tsx'));
+const EasyWorshipController = lazy(() => import('./views/easyworship/EasyWorshipController.tsx'));
 const EasyWorshipView = lazy(() => import('./views/projector/EasyWorshipView.tsx'));
 
 // 🔥 GI-AYO ANG IMPORT PATH SA PPTPRESENTATION (Kung gi-change ang folder name)

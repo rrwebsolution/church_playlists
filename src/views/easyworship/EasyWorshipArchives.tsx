@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Bookmark, Trash2, RotateCcw, Search, X, FileText, Folder, ChevronLeft, CalendarDays, Edit3 } from 'lucide-react';
+import { Bookmark, Trash2, RotateCcw, Search, X, FileText, Folder, ChevronLeft, CalendarDays, Edit3, Check } from 'lucide-react';
 import Swal from 'sweetalert2';
 import type { ArchiveFolder, SavedItem } from './EasyWorshipController';
 
@@ -8,15 +8,6 @@ interface ArchivesProps {
   setFolders: React.Dispatch<React.SetStateAction<ArchiveFolder[]>>;
   onLoad: (item: SavedItem) => void;
 }
-
-const Toast = Swal.mixin({
-  toast: true,
-  position: 'top-end',
-  showConfirmButton: false,
-  timer: 2000,
-  timerProgressBar: true,
-  customClass: { container: 'z-[99999]' }
-});
 
 // 🔥 HELPER FUNCTION PARA MAG-KATEGORYA BASE SA ORAS
 const categorizeByTime = <T extends { id: string }>(items: T[]) => {
@@ -67,6 +58,8 @@ const formatFolderDate = (id: string) => {
 export const EasyWorshipArchives = ({ folders, setFolders, onLoad }: ArchivesProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const[activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   const activeFolder = folders.find(f => f.id === activeFolderId);
 
@@ -96,26 +89,23 @@ export const EasyWorshipArchives = ({ folders, setFolders, onLoad }: ArchivesPro
   const categorizedFolders = useMemo(() => categorizeByTime(folders), [folders]);
   const categorizedItems = useMemo(() => categorizeByTime(activeFolder?.items || []), [activeFolder]);
 
-  // 🔥 EDIT/RENAME FOLDER LOGIC 🔥
-  const handleEditFolder = async (folder: ArchiveFolder, e: React.MouseEvent) => {
+  const startEditing = (folder: ArchiveFolder, e: React.MouseEvent) => {
     e.stopPropagation();
-    const { value: newName } = await Swal.fire({
-      title: 'Rename Folder',
-      input: 'text',
-      inputValue: folder.name,
-      showCancelButton: true,
-      confirmButtonColor: '#4f46e5',
-      inputValidator: (value) => {
-        if (!value || !value.trim()) return 'Folder name cannot be empty!';
-        return null;
-      },
-      customClass: { popup: 'rounded-[2rem]' }
-    });
+    setEditingId(folder.id);
+    setEditValue(folder.name);
+  };
 
-    if (newName && newName.trim() !== folder.name) {
-      setFolders(prev => prev.map(f => f.id === folder.id ? { ...f, name: newName.trim() } : f));
-      Toast.fire({ icon: 'success', title: 'Folder renamed successfully!' });
-    }
+  const handleSaveEdit = (folderId: string) => {
+    const trimmed = editValue.trim();
+    if (!trimmed) return;
+    setFolders(prev => prev.map(f => f.id === folderId ? { ...f, name: trimmed } : f));
+    setEditingId(null);
+    setEditValue('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditValue('');
   };
 
   // DELETE FOLDER LOGIC
@@ -207,27 +197,53 @@ export const EasyWorshipArchives = ({ folders, setFolders, onLoad }: ArchivesPro
                 <div>
                   <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 mb-4 px-2">Folders</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                    {filteredFolders.map((folder) => (
-                      <div 
-                        key={folder.id} 
-                        onClick={() => { setActiveFolderId(folder.id); setSearchQuery(""); }}
+                    {filteredFolders.map((folder) => {
+                      const isEditingThis = editingId === folder.id;
+                      return (
+                      <div
+                        key={folder.id}
+                        onClick={() => { if (!isEditingThis) { setActiveFolderId(folder.id); setSearchQuery(""); } }}
                         className="group flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-3xl p-6 hover:border-indigo-500 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer relative"
                       >
-                        {/* 🔥 FOLDER CARD HEADER WITH EDIT BUTTON 🔥 */}
                         <div className="flex justify-between items-start mb-4">
                           <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl"><Folder className="w-8 h-8" /></div>
-                          <div className="flex items-center gap-1">
-                            <button onClick={(e) => handleEditFolder(folder, e)} className="p-2 text-zinc-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all" title="Rename Folder"><Edit3 className="w-4 h-4" /></button>
-                            <button onClick={(e) => handleDeleteFolder(folder.id, e)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all" title="Delete Folder"><Trash2 className="w-4 h-4" /></button>
+                          {!isEditingThis && (
+                            <div className="flex items-center gap-1">
+                              <button onClick={(e) => startEditing(folder, e)} className="p-2 text-zinc-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all" title="Rename Folder"><Edit3 className="w-4 h-4" /></button>
+                              <button onClick={(e) => handleDeleteFolder(folder.id, e)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all" title="Delete Folder"><Trash2 className="w-4 h-4" /></button>
+                            </div>
+                          )}
+                        </div>
+                        {isEditingThis ? (
+                          <div className="flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              autoFocus
+                              className="w-full bg-zinc-50 dark:bg-zinc-950 border border-indigo-500/50 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3 py-2.5 text-sm font-bold outline-none text-zinc-900 dark:text-white transition-all"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveEdit(folder.id);
+                                if (e.key === 'Escape') handleCancelEdit();
+                              }}
+                              placeholder="Folder name..."
+                            />
+                            <div className="flex gap-2">
+                              <button onClick={() => handleSaveEdit(folder.id)} className="flex-1 flex justify-center items-center gap-1.5 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-indigo-700 transition-colors active:scale-95"><Check className="w-3.5 h-3.5" /> Save</button>
+                              <button onClick={handleCancelEdit} className="px-3 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors active:scale-95"><X className="w-3.5 h-3.5" /></button>
+                            </div>
                           </div>
-                        </div>
-                        <h3 className="font-black text-zinc-900 dark:text-zinc-100 truncate text-lg">{folder.name}</h3>
-                        <div className="flex flex-col gap-0.5 mt-1">
-                          <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{folder.items.length} {folder.items.length === 1 ? 'File' : 'Files'}</p>
-                          <p className="text-[8px] text-zinc-500/70 dark:text-zinc-500 font-bold uppercase tracking-widest">Created: {formatFolderDate(folder.id)}</p>
-                        </div>
+                        ) : (
+                          <>
+                            <h3 className="font-black text-zinc-900 dark:text-zinc-100 truncate text-lg">{folder.name}</h3>
+                            <div className="flex flex-col gap-0.5 mt-1">
+                              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{folder.items.length} {folder.items.length === 1 ? 'File' : 'Files'}</p>
+                              <p className="text-[8px] text-zinc-500/70 dark:text-zinc-500 font-bold uppercase tracking-widest">Created: {formatFolderDate(folder.id)}</p>
+                            </div>
+                          </>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -276,27 +292,53 @@ export const EasyWorshipArchives = ({ folders, setFolders, onLoad }: ArchivesPro
                       <div className="h-px bg-zinc-200 dark:bg-zinc-800/50 flex-1 ml-2"></div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                      {groupFolders.map((folder) => (
-                        <div 
-                          key={folder.id} 
-                          onClick={() => setActiveFolderId(folder.id)}
+                      {groupFolders.map((folder) => {
+                        const isEditingThis = editingId === folder.id;
+                        return (
+                        <div
+                          key={folder.id}
+                          onClick={() => { if (!isEditingThis) setActiveFolderId(folder.id); }}
                           className="group flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-3xl p-6 hover:border-indigo-500 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer relative"
                         >
-                          {/* 🔥 FOLDER CARD HEADER WITH EDIT BUTTON 🔥 */}
                           <div className="flex justify-between items-start mb-4">
                             <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl"><Folder className="w-8 h-8" /></div>
-                            <div className="flex items-center gap-1">
-                              <button onClick={(e) => handleEditFolder(folder, e)} className="p-2 text-zinc-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all" title="Rename Folder"><Edit3 className="w-4 h-4" /></button>
-                              <button onClick={(e) => handleDeleteFolder(folder.id, e)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all" title="Delete Folder"><Trash2 className="w-4 h-4" /></button>
+                            {!isEditingThis && (
+                              <div className="flex items-center gap-1">
+                                <button onClick={(e) => startEditing(folder, e)} className="p-2 text-zinc-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all" title="Rename Folder"><Edit3 className="w-4 h-4" /></button>
+                                <button onClick={(e) => handleDeleteFolder(folder.id, e)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all" title="Delete Folder"><Trash2 className="w-4 h-4" /></button>
+                              </div>
+                            )}
+                          </div>
+                          {isEditingThis ? (
+                            <div className="flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                autoFocus
+                                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-indigo-500/50 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3 py-2.5 text-sm font-bold outline-none text-zinc-900 dark:text-white transition-all"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveEdit(folder.id);
+                                  if (e.key === 'Escape') handleCancelEdit();
+                                }}
+                                placeholder="Folder name..."
+                              />
+                              <div className="flex gap-2">
+                                <button onClick={() => handleSaveEdit(folder.id)} className="flex-1 flex justify-center items-center gap-1.5 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-indigo-700 transition-colors active:scale-95"><Check className="w-3.5 h-3.5" /> Save</button>
+                                <button onClick={handleCancelEdit} className="px-3 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl hover:bg-zinc-300 dark:hover:bg-zinc-700 transition-colors active:scale-95"><X className="w-3.5 h-3.5" /></button>
+                              </div>
                             </div>
-                          </div>
-                          <h3 className="font-black text-zinc-900 dark:text-zinc-100 truncate text-lg">{folder.name}</h3>
-                          <div className="flex flex-col gap-0.5 mt-1">
-                            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{folder.items.length} {folder.items.length === 1 ? 'File' : 'Files'}</p>
-                            <p className="text-[8px] text-zinc-500/70 dark:text-zinc-500 font-bold uppercase tracking-widest">Created: {formatFolderDate(folder.id)}</p>
-                          </div>
+                          ) : (
+                            <>
+                              <h3 className="font-black text-zinc-900 dark:text-zinc-100 truncate text-lg">{folder.name}</h3>
+                              <div className="flex flex-col gap-0.5 mt-1">
+                                <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">{folder.items.length} {folder.items.length === 1 ? 'File' : 'Files'}</p>
+                                <p className="text-[8px] text-zinc-500/70 dark:text-zinc-500 font-bold uppercase tracking-widest">Created: {formatFolderDate(folder.id)}</p>
+                              </div>
+                            </>
+                          )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );

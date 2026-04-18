@@ -424,6 +424,10 @@ export default function SongList(props: any) {
     });
     if (result.isConfirmed) {
       setFolders((prev: PlaylistFolder[]) => prev.map(f => f.id === activeFolderId ? { ...f, songs: f.songs.filter(s => s.id !== song.id) } : f));
+      if (currentSong?.id === song.id) {
+        setCurrentSong(null);
+        setIsPlaying(false);
+      }
       Toast.fire({ icon: 'success', title: 'Song removed' });
     }
   };

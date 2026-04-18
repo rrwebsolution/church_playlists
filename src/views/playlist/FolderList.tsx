@@ -1,9 +1,11 @@
-import { useState, useMemo } from 'react';
-import { 
-  Folder, FolderPlus, Trash2, Check, Music, 
+import { useState, useMemo } from 'react'; // useMemo kept for groupedFolders
+import {
+  Folder, FolderPlus, Trash2, Check, Music,
   ListMusic, Sparkles, Edit2, X, Filter, CalendarDays, Clock, Plus,
-  Search, Play
+  Search, Play, Info
 } from 'lucide-react';
+
+const YOUTUBE_SONG_LIMIT = 20;
 import type { PlaylistFolder, Song } from '../types';
 import Swal from 'sweetalert2';
 import { useNavigate } from 'react-router-dom';
@@ -158,7 +160,7 @@ export default function FolderList({
 
   return (
     <div className="animate-in fade-in duration-700">
-      
+
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 px-2 relative z-10">
         <div className="space-y-2">
@@ -168,6 +170,16 @@ export default function FolderList({
             <p className="text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-[0.25em] flex items-center gap-2">
               <ListMusic className="w-4 h-4" /> Worship Playlists
             </p>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 w-fit">
+              <svg className="w-3 h-3 text-amber-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z"/>
+                <path fill="white" d="M9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+              <Info className="w-3 h-3 text-amber-500" />
+              <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                YouTube · Max {YOUTUBE_SONG_LIMIT} songs per folder
+              </span>
+            </div>
         </div>
         
         {/* FILTER BUTTON */}
@@ -276,7 +288,6 @@ export default function FolderList({
           </div>
         </div>
 
-       
       </div>
       
       {/* NO FOLDERS FALLBACK */}
@@ -422,7 +433,7 @@ export default function FolderList({
                               {folder.name}
                             </h3>
 
-                            <div className="flex items-center justify-between mt-auto">
+                            <div className="flex items-center justify-between mt-auto gap-2">
                               <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full transition-all
                                 ${isThisFolderPlaying
                                   ? 'bg-indigo-500 text-white shadow-md shadow-indigo-500/30'
@@ -434,6 +445,25 @@ export default function FolderList({
                                   {folder.songs?.length || 0} Tracks
                                 </span>
                               </div>
+
+                              {/* YouTube limit badge */}
+                              {!isThisFolderPlaying && (() => {
+                                const count = folder.songs?.length || 0;
+                                const isFull = count >= YOUTUBE_SONG_LIMIT;
+                                const isWarning = count >= YOUTUBE_SONG_LIMIT * 0.75;
+                                return (
+                                  <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-lg tabular-nums
+                                    ${isFull
+                                      ? 'bg-red-100 dark:bg-red-500/20 text-red-500'
+                                      : isWarning
+                                      ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-500'
+                                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'
+                                    }`}
+                                  >
+                                    {count}/{YOUTUBE_SONG_LIMIT}
+                                  </span>
+                                );
+                              })()}
 
                               {isThisFolderPlaying && (
                                 <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 animate-pulse bg-white/50 dark:bg-indigo-950/50 px-2 py-1 rounded-md">

@@ -6,7 +6,7 @@ export default function EasyWorshipView() {
   const [lyrics, setLyrics] = useState("");
   const [fontSize, setFontSize] = useState(60);
   const [bgType, setBgType] = useState<BackgroundType>('none');
-  const [fontFamily, setFontFamily] = useState('Arial, sans-serif');
+  const [fontFamily, setFontFamily] = useState('Oswald, sans-serif');
   const [videoUrl, setVideoUrl] = useState('');
   const [isVisible, setIsVisible] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);

@@ -52,7 +52,7 @@ export default function EasyWorshipController() {
     const saved = localStorage.getItem('ew_font_size');
     return saved ? parseInt(saved) : 100;
   });
-  const [fontFamily, setFontFamily] = useState(() => localStorage.getItem('ew_font_family') || 'Arial, sans-serif');
+  const [fontFamily, setFontFamily] = useState(() => localStorage.getItem('ew_font_family') || 'Oswald, sans-serif');
   const [bgType, setBgType] = useState<BackgroundType>('green');
   const [videoUrl, setVideoUrl] = useState(() => localStorage.getItem('ew_video_url') || '');
   const [showMonitor, setShowMonitor] = useState(true);

@@ -325,11 +325,13 @@ export default function EasyWorshipController() {
                   </select>
                 </div>
 
-                {/* Font size slider */}
-                <div className="flex items-center gap-3">
-                  <Settings2 className="w-3 h-3 text-zinc-600" />
+                {/* Font size slider + buttons */}
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-3 h-3 text-zinc-600 shrink-0" />
+                  <button onClick={() => setPreviewFontSize(s => Math.max(20, s - 1))} className="w-6 h-6 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-sm font-black transition-colors shrink-0">−</button>
                   <input type="range" min="20" max="200" value={previewFontSize} onChange={(e) => setPreviewFontSize(parseInt(e.target.value))} className="flex-1 h-1 bg-zinc-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
-                  <span className="text-[10px] font-bold text-zinc-500 tabular-nums">{previewFontSize}px</span>
+                  <button onClick={() => setPreviewFontSize(s => Math.min(200, s + 1))} className="w-6 h-6 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-sm font-black transition-colors shrink-0">+</button>
+                  <span className="text-[10px] font-bold text-zinc-500 tabular-nums w-9 text-right">{previewFontSize}px</span>
                 </div>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Presentation, Settings2, GripHorizontal, X, MonitorPlay, Type } from 'lucide-react';
+import { Presentation, Settings2, GripHorizontal, X, MonitorPlay, Type, Monitor } from 'lucide-react';
 import Swal from 'sweetalert2';
 import Draggable from 'react-draggable';
 import instance from '../../plugin/axios';
@@ -60,6 +60,19 @@ export default function EasyWorshipController() {
   const nodeRef = useRef(null);
 
   const [currentArchiveId, setCurrentArchiveId] = useState<string | null>(null);
+  const projectorWindowRef = useRef<Window | null>(null);
+
+  const handleOpenProjector = () => {
+    if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
+      projectorWindowRef.current.focus();
+      return;
+    }
+    projectorWindowRef.current = window.open(
+      '/projector?fs=1',
+      'projector_output',
+      'width=1920,height=1080,menubar=no,toolbar=no,location=no,status=no'
+    );
+  };
 
   const [archiveFolders, setArchiveFolders] = useState<ArchiveFolder[]>(() => {
     const saved = localStorage.getItem('jamc_ew_folders');
@@ -233,11 +246,16 @@ export default function EasyWorshipController() {
           </div>
         </div>
 
-        {!showMonitor && (
-          <button onClick={() => setShowMonitor(true)} className="flex items-center gap-2 px-7 py-4 bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all">
-            <MonitorPlay className="w-4 h-4" /> Show Live Monitor
+        <div className="flex items-center gap-3">
+          {!showMonitor && (
+            <button onClick={() => setShowMonitor(true)} className="flex items-center gap-2 px-7 py-4 bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all">
+              <MonitorPlay className="w-4 h-4" /> Show Live Monitor
+            </button>
+          )}
+          <button onClick={handleOpenProjector} className="flex items-center gap-2 px-7 py-4 bg-zinc-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-zinc-800 hover:scale-105 active:scale-95 transition-all border border-zinc-700">
+            <Monitor className="w-4 h-4" /> Open Projector
           </button>
-        )}
+        </div>
       </div>
 
       {showMonitor && (
@@ -249,11 +267,28 @@ export default function EasyWorshipController() {
             </div>
 
             {/* Preview screen */}
-            <div className={`aspect-video w-full rounded-2xl flex items-center justify-center p-6 border border-zinc-900 overflow-hidden relative transition-all duration-1000 ${bgType === 'praise' ? 'bg-indigo-900 animate-pulse' : bgType === 'worship' ? 'bg-zinc-950' : bgType === 'green' ? 'bg-[#00FF00]' : 'bg-black'}`}>
+            <div className={`aspect-video w-full rounded-2xl flex items-center justify-center p-6 border border-zinc-900 overflow-hidden relative transition-all duration-1000 group/monitor ${bgType === 'praise' ? 'bg-indigo-900 animate-pulse' : bgType === 'worship' ? 'bg-zinc-950' : bgType === 'green' ? 'bg-[#00FF00]' : 'bg-black'}`}>
                 {bgType === 'video' && videoUrl && (
                   <video key={videoUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover rounded-2xl" src={videoUrl} />
                 )}
                 <p className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10" style={{ fontSize: `${previewFontSize * 0.25}px`, fontFamily, fontWeight: 'bold', WebkitTextStroke: '0.5px #000', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>{liveText || <span className="text-white/10 italic text-[10px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset' }}>CLEARED</span>}</p>
+
+                {/* Hover overlay — shows projector output details */}
+                <div className="absolute inset-0 z-20 rounded-2xl bg-black/85 backdrop-blur-sm opacity-0 group-hover/monitor:opacity-100 transition-opacity duration-200 flex flex-col gap-2 p-4 overflow-y-auto pointer-events-none">
+                  <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400 mb-1">Projector Output</p>
+                  <div className="flex-1 overflow-y-auto">
+                    {liveText ? (
+                      <p className="text-white text-[11px] font-bold leading-relaxed whitespace-pre-wrap">{liveText}</p>
+                    ) : (
+                      <p className="text-zinc-600 italic text-[10px]">No output — screen is cleared.</p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-2 border-t border-zinc-700 mt-auto">
+                    <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">BG: {bgType}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">Size: {previewFontSize}px</span>
+                    <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider" style={{ fontFamily }}>{fontFamily.split(',')[0]}</span>
+                  </div>
+                </div>
             </div>
 
             <div className="space-y-3 px-1">

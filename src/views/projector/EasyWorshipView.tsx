@@ -9,6 +9,8 @@ export default function EasyWorshipView() {
   const [fontSize, setFontSize] = useState(60);
   const [bgType, setBgType] = useState<BackgroundType>('none');
   const [fontFamily, setFontFamily] = useState('Oswald, sans-serif');
+  const [isBold, setIsBold] = useState(true);
+  const [isAllCaps, setIsAllCaps] = useState(true);
   const [videoUrl, setVideoUrl] = useState('');
   const [isVisible, setIsVisible] = useState(false);
   const [needsFullscreen, setNeedsFullscreen] = useState(
@@ -35,6 +37,8 @@ export default function EasyWorshipView() {
       if (data.background) setBgType(data.background);
       if (data.fontFamily) setFontFamily(data.fontFamily);
       if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
+      if (data.bold !== undefined) setIsBold(data.bold);
+      if (data.allCaps !== undefined) setIsAllCaps(data.allCaps);
       return;
     }
 
@@ -45,6 +49,8 @@ export default function EasyWorshipView() {
       if (data.background) setBgType(data.background);
       if (data.fontFamily) setFontFamily(data.fontFamily);
       if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
+      if (data.bold !== undefined) setIsBold(data.bold);
+      if (data.allCaps !== undefined) setIsAllCaps(data.allCaps);
       if (newText.trim() !== "") setIsVisible(true);
     }, 300);
   }, []);
@@ -126,6 +132,8 @@ export default function EasyWorshipView() {
           style={{
             fontSize: `${fontSize}px`,
             fontFamily,
+            fontWeight: isBold ? 'bold' : 'normal',
+            textTransform: isAllCaps ? 'uppercase' : 'none',
             textShadow: '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
           }}
         >

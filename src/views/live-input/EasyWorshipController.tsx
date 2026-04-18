@@ -53,6 +53,8 @@ export default function EasyWorshipController() {
     return saved ? parseInt(saved) : 100;
   });
   const [fontFamily, setFontFamily] = useState(() => localStorage.getItem('ew_font_family') || 'Oswald, sans-serif');
+  const [isBold, setIsBold] = useState(() => localStorage.getItem('ew_bold') !== 'false');
+  const [isAllCaps, setIsAllCaps] = useState(() => localStorage.getItem('ew_allcaps') !== 'false');
   const [bgType, setBgType] = useState<BackgroundType>('green');
   const [videoUrl, setVideoUrl] = useState(() => localStorage.getItem('ew_video_url') || '');
   const [showMonitor, setShowMonitor] = useState(true);
@@ -100,15 +102,18 @@ export default function EasyWorshipController() {
     localStorage.setItem('ew_font_family', fontFamily);
   }, [fontFamily]);
 
+  useEffect(() => { localStorage.setItem('ew_bold', String(isBold)); }, [isBold]);
+  useEffect(() => { localStorage.setItem('ew_allcaps', String(isAllCaps)); }, [isAllCaps]);
+
   useEffect(() => {
     localStorage.setItem('ew_video_url', videoUrl);
   }, [videoUrl]);
 
   const isOutputCleared = liveText === "";
 
-  const broadcastData = async (text: string, size: number, bg: string, font: string, vidUrl: string = '') => {
+  const broadcastData = async (text: string, size: number, bg: string, font: string, vidUrl: string = '', bold = isBold, allCaps = isAllCaps) => {
     setLiveText(text);
-    const data = { text, fontSize: size, background: bg, fontFamily: font, videoUrl: vidUrl, updatedAt: Date.now() };
+    const data = { text, fontSize: size, background: bg, fontFamily: font, videoUrl: vidUrl, bold, allCaps, updatedAt: Date.now() };
     // Write to localStorage so the projector window on same browser syncs instantly
     localStorage.setItem('jamc_live_display', JSON.stringify(data));
     try {
@@ -142,7 +147,7 @@ export default function EasyWorshipController() {
     return () => clearTimeout(timer);
   }, [quickSlides, liveSlideIndex, liveText, previewFontSize, bgType, fontFamily, videoUrl]);
 
-  useEffect(() => { if (liveText !== "") broadcastData(liveText, previewFontSize, bgType, fontFamily, videoUrl); },[previewFontSize, bgType, fontFamily, videoUrl]);
+  useEffect(() => { if (liveText !== "") broadcastData(liveText, previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps); },[previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps]);
 
   const handleClearEditor = () => {
     setInputTitle("");
@@ -271,7 +276,7 @@ export default function EasyWorshipController() {
                 {bgType === 'video' && videoUrl && (
                   <video key={videoUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover rounded-2xl" src={videoUrl} />
                 )}
-                <p className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10" style={{ fontSize: `${previewFontSize * 0.25}px`, fontFamily, fontWeight: 'bold', WebkitTextStroke: '0.5px #000', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>{liveText || <span className="text-white/10 italic text-[10px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset' }}>CLEARED</span>}</p>
+                <p className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10" style={{ fontSize: `${previewFontSize * 0.25}px`, fontFamily, fontWeight: isBold ? 'bold' : 'normal', textTransform: isAllCaps ? 'uppercase' : 'none', WebkitTextStroke: '0.5px #000', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>{liveText || <span className="text-white/10 italic text-[10px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset', textTransform: 'none' }}>CLEARED</span>}</p>
 
                 {/* Hover overlay — shows projector output details */}
                 <div className="absolute inset-0 z-20 rounded-2xl bg-black/85 backdrop-blur-sm opacity-0 group-hover/monitor:opacity-100 transition-opacity duration-200 flex flex-col gap-2 p-4 overflow-y-auto pointer-events-none">
@@ -287,6 +292,8 @@ export default function EasyWorshipController() {
                     <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">BG: {bgType}</span>
                     <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">Size: {previewFontSize}px</span>
                     <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider" style={{ fontFamily }}>{fontFamily.split(',')[0]}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${isBold ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-600'}`}>Bold: {isBold ? 'ON' : 'OFF'}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${isAllCaps ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-600'}`}>Caps: {isAllCaps ? 'ON' : 'OFF'}</span>
                   </div>
                 </div>
             </div>
@@ -323,6 +330,8 @@ export default function EasyWorshipController() {
                       <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
                     ))}
                   </select>
+                  <button onClick={() => setIsBold(b => !b)} className={`px-2.5 py-1.5 rounded-xl text-[9px] font-black border transition-all ${isBold ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>B</button>
+                  <button onClick={() => setIsAllCaps(c => !c)} className={`px-2.5 py-1.5 rounded-xl text-[9px] font-black border transition-all ${isAllCaps ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>AA</button>
                 </div>
 
                 {/* Font size slider + buttons */}

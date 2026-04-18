@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type BackgroundType = 'none' | 'praise' | 'worship' | 'green' | 'video';
 
@@ -9,6 +9,7 @@ export default function EasyWorshipView() {
   const [fontFamily, setFontFamily] = useState('Arial, sans-serif');
   const [videoUrl, setVideoUrl] = useState('');
   const [isVisible, setIsVisible] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const syncDataFromStorage = () => {
@@ -66,27 +67,21 @@ export default function EasyWorshipView() {
   return (
     <div className={`w-screen h-screen flex flex-col justify-center items-center p-10 md:p-24 overflow-hidden select-none transition-colors duration-1000 relative ${getBgClass(bgType)}`}>
 
-      {/* Video background */}
+      {/* VIDEO BACKGROUND */}
       {bgType === 'video' && videoUrl && (
         <video
+          ref={videoRef}
           key={videoUrl}
           autoPlay
           loop
           muted
           playsInline
-          className="absolute inset-0 w-full h-full object-cover z-0"
+          className="absolute inset-0 w-full h-full object-cover"
           src={videoUrl}
         />
       )}
 
-      {!isVisible && lyrics === "" && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <p className="text-white font-black uppercase tracking-[1em] text-xs opacity-10 animate-pulse">
-            JAMC SYSTEM CONNECTED
-          </p>
-        </div>
-      )}
-
+      {/* LYRICS WITH SMOOTH ANIMATION */}
       <div
         className={`transition-all duration-500 ease-in-out transform w-full max-w-[95%] flex justify-center relative z-10 ${
           isVisible
@@ -99,8 +94,6 @@ export default function EasyWorshipView() {
           style={{
             fontSize: `${fontSize}px`,
             fontFamily,
-            fontWeight: 'bold',
-            WebkitTextStroke: '3px #000',
             textShadow: '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
           }}
         >

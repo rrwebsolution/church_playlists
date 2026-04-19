@@ -966,7 +966,7 @@ export default function EasyWorshipController() {
       </div>
 
       {showMonitor && (
-        <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".monitor-close,button,input,select,option" bounds="parent">
+        <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".monitor-close,.no-drag,button,input,select,option" bounds="parent">
           <div ref={nodeRef} className="fixed top-28 right-3 md:right-6 lg:right-8 z-100 w-[min(calc(100vw-1.5rem),42rem)] bg-zinc-950 p-4 md:p-5 rounded-[2.5rem] border border-zinc-800 shadow-2xl space-y-4">
             <div className="flex items-center justify-between px-2 cursor-move drag-handle">
               <div className="flex items-center gap-2 text-zinc-500">
@@ -978,7 +978,7 @@ export default function EasyWorshipController() {
               </button>
             </div>
 
-            <div ref={monitorFrameRef} className={`aspect-video w-full rounded-2xl border border-zinc-900 overflow-hidden relative transition-all duration-1000 group/monitor ${bgType === 'praise' ? 'bg-indigo-900 animate-pulse' : bgType === 'worship' ? 'bg-zinc-950' : bgType === 'green' ? 'bg-[#00FF00]' : 'bg-black'}`}>
+            <div ref={monitorFrameRef} className={`no-drag aspect-video w-full rounded-2xl border border-zinc-900 overflow-hidden relative transition-all duration-1000 group/monitor ${bgType === 'praise' ? 'bg-indigo-900 animate-pulse' : bgType === 'worship' ? 'bg-zinc-950' : bgType === 'green' ? 'bg-[#00FF00]' : 'bg-black'}`}>
               <div
                 className="absolute left-1/2 top-1/2 origin-center"
                 style={{
@@ -1030,7 +1030,7 @@ export default function EasyWorshipController() {
               </div>
             </div>
 
-            <div className="space-y-4 px-1">
+            <div className="no-drag space-y-4 px-1">
               <div className="rounded-[1.6rem] border border-zinc-800 bg-zinc-900/80 p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>

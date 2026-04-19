@@ -294,7 +294,7 @@ export default function EasyWorshipController() {
     if (videoInputMode !== selectedBackground.sourceType) {
       setVideoInputMode(selectedBackground.sourceType);
     }
-  }, [bgType, selectedVideoBackgroundId, videoBackgroundLibrary, videoUrl, videoInputMode]);
+  }, [bgType, selectedVideoBackgroundId, videoBackgroundLibrary]);
 
   useEffect(() => {
     let active = true;
@@ -781,6 +781,10 @@ export default function EasyWorshipController() {
     setVideoBackgroundLibrary(prev => [newBackground, ...prev]);
     setSelectedVideoBackgroundId(newBackground.id);
     setUploadedVideoFile(null);
+    setUploadedVideoStoragePath(null);
+    setActiveVideoBlobKey(null);
+    setVideoInputMode('link');
+    setVideoUrl('');
     if (uploadInputRef.current) {
       uploadInputRef.current.value = '';
     }
@@ -1011,7 +1015,7 @@ export default function EasyWorshipController() {
                 </div>
               </div>
 
-              <div className="absolute inset-0 z-20 rounded-2xl bg-black/85 backdrop-blur-sm opacity-0 group-hover/monitor:opacity-100 transition-opacity duration-200 flex flex-col gap-2 p-4 overflow-y-auto pointer-events-none">
+              <div className="absolute inset-0 z-10 rounded-2xl bg-black/85 backdrop-blur-sm opacity-0 group-hover/monitor:opacity-100 transition-opacity duration-200 flex flex-col gap-2 p-4 overflow-y-auto pointer-events-none">
                 <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400 mb-1">Projector Output</p>
                 <div className="flex-1 overflow-y-auto">
                   {liveText ? (

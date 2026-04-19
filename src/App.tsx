@@ -4,7 +4,7 @@ import { Sidebar } from './views/components/Sidebar';
 import { Header } from './views/components/Header';
 import { Footer } from './views/components/Footer';
 import type { PlaylistFolder, Song } from './views/types';
-import { X, GripHorizontal, Tv, Monitor } from 'lucide-react';
+import { X, GripHorizontal, Tv } from 'lucide-react';
 
 import axiosInstance from './plugin/axios';
 import axios from 'axios';
@@ -65,176 +65,6 @@ const normalizePresentationIds = (items: PptPresentationFile[]) => {
   });
 };
 
-type ObsDisplayState = {
-  text: string;
-  fontSize: number;
-  background: string;
-  fontFamily: string;
-  videoUrl: string;
-  bold: boolean;
-  allCaps: boolean;
-  updatedAt: number;
-};
-
-const OBS_STATE_CHANNEL = 'jamc-obs-state';
-const DEFAULT_OBS_DISPLAY: ObsDisplayState = {
-  text: '',
-  fontSize: 60,
-  background: 'none',
-  fontFamily: 'Oswald, sans-serif',
-  videoUrl: '',
-  bold: true,
-  allCaps: true,
-  updatedAt: 0,
-};
-
-const readObsDisplayState = (): ObsDisplayState => {
-  if (typeof window === 'undefined') return DEFAULT_OBS_DISPLAY;
-
-  try {
-    const raw = window.localStorage.getItem('jamc_live_display');
-    if (!raw) return DEFAULT_OBS_DISPLAY;
-    return { ...DEFAULT_OBS_DISPLAY, ...JSON.parse(raw) };
-  } catch {
-    return DEFAULT_OBS_DISPLAY;
-  }
-};
-
-const getObsMonitorBgClass = (type: string) => {
-  if (type === 'praise') return 'bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 animate-gradient-fast';
-  if (type === 'worship') return 'bg-gradient-to-t from-black via-indigo-950 to-black animate-gradient-slow';
-  if (type === 'green') return 'bg-[#00FF00]';
-  return 'bg-black';
-};
-
-function PersistentLiveMonitor({ onClose }: { onClose: () => void }) {
-  const [display, setDisplay] = useState<ObsDisplayState>(() => readObsDisplayState());
-  const nodeRef = useRef(null);
-  const frameRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(0.25);
-
-  const applyDisplay = useCallback((data: Partial<ObsDisplayState> | null | undefined) => {
-    if (!data) return;
-
-    setDisplay((prev) => {
-      const nextUpdatedAt = Number(data.updatedAt ?? 0);
-      if (prev.updatedAt && nextUpdatedAt && nextUpdatedAt < prev.updatedAt) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        ...data,
-        updatedAt: nextUpdatedAt || prev.updatedAt,
-      };
-    });
-  }, []);
-
-  useEffect(() => {
-    const syncFromStorage = () => {
-      applyDisplay(readObsDisplayState());
-    };
-
-    let channel: BroadcastChannel | null = null;
-    if (typeof BroadcastChannel !== 'undefined') {
-      channel = new BroadcastChannel(OBS_STATE_CHANNEL);
-      channel.onmessage = (event) => {
-        applyDisplay(event.data as Partial<ObsDisplayState>);
-      };
-    }
-
-    window.addEventListener('storage', syncFromStorage);
-    window.addEventListener('focus', syncFromStorage);
-    window.addEventListener('pageshow', syncFromStorage);
-    syncFromStorage();
-
-    return () => {
-      channel?.close();
-      window.removeEventListener('storage', syncFromStorage);
-      window.removeEventListener('focus', syncFromStorage);
-      window.removeEventListener('pageshow', syncFromStorage);
-    };
-  }, [applyDisplay]);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame || typeof ResizeObserver === 'undefined') return;
-
-    const DESIGN_WIDTH = 1920;
-    const DESIGN_HEIGHT = 1080;
-
-    const updateScale = () => {
-      const nextScale = Math.min(
-        frame.clientWidth / DESIGN_WIDTH,
-        frame.clientHeight / DESIGN_HEIGHT
-      );
-      setScale(nextScale > 0 ? nextScale : 0.25);
-    };
-
-    updateScale();
-
-    const observer = new ResizeObserver(() => {
-      updateScale();
-    });
-
-    observer.observe(frame);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
-  return (
-    <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".monitor-close" bounds="parent">
-      <div ref={nodeRef} className="fixed top-28 right-3 md:right-6 lg:right-8 z-70 w-[min(calc(100vw-1.5rem),42rem)] bg-zinc-950 p-4 md:p-5 rounded-[2.5rem] border border-zinc-800 shadow-2xl space-y-4">
-        <div className="flex items-center justify-between px-2 cursor-move drag-handle">
-          <div className="flex items-center gap-2 text-zinc-500">
-            <GripHorizontal className="w-4 h-4" />
-            <span className="text-[9px] font-black uppercase tracking-widest">Live Monitor</span>
-          </div>
-          <button onClick={onClose} className="monitor-close text-zinc-600 hover:text-red-500 transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div ref={frameRef} className={`aspect-video w-full rounded-2xl border border-zinc-900 overflow-hidden relative transition-all duration-1000 ${getObsMonitorBgClass(display.background)}`}>
-          <div
-            className="absolute left-1/2 top-1/2 origin-center"
-            style={{
-              width: '1920px',
-              height: '1080px',
-              transform: `translate(-50%, -50%) scale(${scale})`,
-            }}
-          >
-            {display.background === 'video' && display.videoUrl && (
-              <video key={display.videoUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={display.videoUrl} />
-            )}
-            <div className="absolute inset-0 flex items-center justify-center p-24">
-              <p
-                className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10 w-full"
-                style={{
-                  fontSize: `${display.fontSize}px`,
-                  fontFamily: display.fontFamily,
-                  fontWeight: display.bold ? 'bold' : 'normal',
-                  textTransform: display.allCaps ? 'uppercase' : 'none',
-                  WebkitTextStroke: '2px #000',
-                  textShadow: '0 8px 40px rgba(0,0,0,0.85)'
-                }}
-              >
-                {display.text || (
-                  <span className="text-white/10 italic text-[42px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset', textTransform: 'none' }}>
-                    CLEARED
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Draggable>
-  );
-}
-
 export default function App() {
   const location = useLocation();
 
@@ -274,7 +104,6 @@ export default function App() {
   });
   
   const [showFloatingPlayer, setShowFloatingPlayer] = useState(true);
-  const [showLiveMonitor, setShowLiveMonitor] = useState(true);
   const [volume, setVolume] = useState(0.8);
   const [isClient, setIsClient] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -726,14 +555,6 @@ export default function App() {
 
         {!isEasyWorshipPage && !isFooterHiddenRoute && currentSong && !showFloatingPlayer && (
           <button onClick={() => setShowFloatingPlayer(true)} className="fixed bottom-44 right-8 z-60 bg-indigo-600 text-white p-4 rounded-full shadow-2xl animate-bounce hover:scale-110 active:scale-95 transition-all" title="Show Video Player"><Tv className="w-6 h-6" /></button>
-        )}
-
-        {showLiveMonitor ? (
-          <PersistentLiveMonitor onClose={() => setShowLiveMonitor(false)} />
-        ) : (
-          <button onClick={() => setShowLiveMonitor(true)} className="fixed bottom-24 right-8 z-70 bg-zinc-900 text-white p-4 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all" title="Show Live Monitor">
-            <Monitor className="w-6 h-6" />
-          </button>
         )}
 
         {!isEasyWorshipPage && (

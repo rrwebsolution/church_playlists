@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { Presentation, Monitor, Activity, Clapperboard, Radio, AlertTriangle, Film, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef, type ChangeEvent } from 'react';
+import { Presentation, Settings2, GripHorizontal, X, MonitorPlay, Type, Monitor, Activity, Clapperboard, Radio, AlertTriangle, Film, Plus, Sparkles, Trash2, LoaderCircle } from 'lucide-react';
 import Swal from 'sweetalert2';
+import Draggable from 'react-draggable';
 import instance from '../../plugin/axios';
 
 import { EasyWorshipArchives } from './EasyWorshipArchives';
@@ -48,6 +49,15 @@ const resolveBackgroundVideoUrl = (url?: string | null, storagePath?: string | n
 
   return url;
 };
+
+const FONTS = [
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Roboto', value: 'Roboto, sans-serif' },
+  { label: 'Oswald', value: 'Oswald, sans-serif' },
+  { label: 'Montserrat', value: 'Montserrat, sans-serif' },
+  { label: 'Impact', value: 'Impact, fantasy' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+];
 
 export interface SavedItem {
   id: string;
@@ -122,35 +132,54 @@ const getVideoBlob = async (key: string): Promise<Blob | null> => {
 };
 
 export default function EasyWorshipController() {
+  const savedLiveDisplay = (() => {
+    try {
+      const raw = localStorage.getItem('jamc_live_display');
+      return raw ? JSON.parse(raw) as Partial<ObsStatePayload> : null;
+    } catch {
+      return null;
+    }
+  })();
+
   const [inputTitle, setInputTitle] = useState(() => localStorage.getItem('ew_draft_title') || '');
   const [inputText, setInputText] = useState(() => localStorage.getItem('ew_draft_text') || '');
 
-  const [liveText, setLiveText] = useState('');
-  const [lastLiveText, setLastLiveText] = useState('');
-  const [previewFontSize] = useState(() => {
+  const [liveText, setLiveText] = useState(() => savedLiveDisplay?.text || '');
+  const [lastLiveText, setLastLiveText] = useState(() => localStorage.getItem('ew_last_live_text') || '');
+  const [previewFontSize, setPreviewFontSize] = useState(() => {
     const saved = localStorage.getItem('ew_font_size');
     return saved ? parseInt(saved) : 100;
   });
-  const [fontFamily] = useState(() => localStorage.getItem('ew_font_family') || 'Oswald, sans-serif');
-  const [isBold] = useState(() => localStorage.getItem('ew_bold') !== 'false');
-  const [isAllCaps] = useState(() => localStorage.getItem('ew_allcaps') !== 'false');
-  const [bgType, setBgType] = useState<BackgroundType>('green');
+  const [fontFamily, setFontFamily] = useState(() => localStorage.getItem('ew_font_family') || 'Oswald, sans-serif');
+  const [isBold, setIsBold] = useState(() => localStorage.getItem('ew_bold') !== 'false');
+  const [isAllCaps, setIsAllCaps] = useState(() => localStorage.getItem('ew_allcaps') !== 'false');
+  const [bgType, setBgType] = useState<BackgroundType>(() => {
+    const saved = localStorage.getItem('ew_bg_type');
+    return (saved as BackgroundType) || 'green';
+  });
   const [videoUrl, setVideoUrl] = useState(() => localStorage.getItem('ew_video_url') || '');
   const [videoInputMode, setVideoInputMode] = useState<VideoInputMode>('link');
   const [selectedVideoBackgroundId, setSelectedVideoBackgroundId] = useState<string | null>(() => localStorage.getItem('ew_selected_video_bg_id'));
   const [activeVideoBlobKey, setActiveVideoBlobKey] = useState<string | null>(null);
+  const [showMonitor, setShowMonitor] = useState(() => localStorage.getItem('ew_show_monitor') !== 'false');
   const [liveSlideIndex, setLiveSlideIndex] = useState<number | null>(null);
   const [isProjectorOpen, setIsProjectorOpen] = useState(false);
   const [lastBroadcastAt, setLastBroadcastAt] = useState<number | null>(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const nodeRef = useRef(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const draftUploadObjectUrlRef = useRef<string | null>(null);
   const persistedObjectUrlsRef = useRef<string[]>([]);
   const obsBroadcastTimerRef = useRef<number | null>(null);
   const obsBroadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const lastObsPayloadRef = useRef<string>('');
   const pendingObsPayloadRef = useRef<string>('');
+  const monitorFrameRef = useRef<HTMLDivElement | null>(null);
+  const [monitorScale, setMonitorScale] = useState(0.25);
 
   const [currentArchiveId, setCurrentArchiveId] = useState<string | null>(null);
   const projectorWindowRef = useRef<Window | null>(null);
+  const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
   const [uploadedVideoStoragePath, setUploadedVideoStoragePath] = useState<string | null>(null);
 
   const handleOpenProjector = () => {
@@ -220,6 +249,18 @@ export default function EasyWorshipController() {
   }, [videoUrl]);
 
   useEffect(() => {
+    localStorage.setItem('ew_bg_type', bgType);
+  }, [bgType]);
+
+  useEffect(() => {
+    localStorage.setItem('ew_last_live_text', lastLiveText);
+  }, [lastLiveText]);
+
+  useEffect(() => {
+    localStorage.setItem('ew_show_monitor', String(showMonitor));
+  }, [showMonitor]);
+
+  useEffect(() => {
     const matchingBackground = videoBackgroundLibrary.find(item => item.url === videoUrl);
     if (matchingBackground) {
       setSelectedVideoBackgroundId(prev => (prev === matchingBackground.id ? prev : matchingBackground.id));
@@ -238,6 +279,22 @@ export default function EasyWorshipController() {
     }
     localStorage.removeItem('ew_selected_video_bg_id');
   }, [selectedVideoBackgroundId]);
+
+  useEffect(() => {
+    if (bgType !== 'video' || !selectedVideoBackgroundId) return;
+
+    const selectedBackground = videoBackgroundLibrary.find(item => item.id === selectedVideoBackgroundId);
+    if (!selectedBackground) return;
+
+    const resolvedUrl = resolveBackgroundVideoUrl(selectedBackground.url, selectedBackground.storagePath);
+    if (videoUrl !== resolvedUrl) {
+      setVideoUrl(resolvedUrl);
+    }
+
+    if (videoInputMode !== selectedBackground.sourceType) {
+      setVideoInputMode(selectedBackground.sourceType);
+    }
+  }, [bgType, selectedVideoBackgroundId, videoBackgroundLibrary, videoUrl, videoInputMode]);
 
   useEffect(() => {
     let active = true;
@@ -318,6 +375,35 @@ export default function EasyWorshipController() {
       obsBroadcastChannelRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const frame = monitorFrameRef.current;
+    if (!frame || typeof ResizeObserver === 'undefined') return;
+
+    const DESIGN_WIDTH = 1920;
+    const DESIGN_HEIGHT = 1080;
+
+    const updateScale = () => {
+      const nextScale = Math.min(
+        frame.clientWidth / DESIGN_WIDTH,
+        frame.clientHeight / DESIGN_HEIGHT
+      );
+
+      setMonitorScale(nextScale > 0 ? nextScale : 0.25);
+    };
+
+    updateScale();
+
+    const observer = new ResizeObserver(() => {
+      updateScale();
+    });
+
+    observer.observe(frame);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [showMonitor]);
 
   useEffect(() => {
     return () => {
@@ -418,6 +504,7 @@ export default function EasyWorshipController() {
   const lineCount = useMemo(() => inputText.split('\n').filter(line => line.trim()).length, [inputText]);
   const hasVideoBackground = bgType === 'video';
   const hasValidVideoUrl = videoUrl.trim().length > 0;
+  const selectedVideoBackground = videoBackgroundLibrary.find(item => item.id === selectedVideoBackgroundId) || null;
   const ambientBackgrounds = videoBackgroundLibrary.filter(item => item.mood === 'ambient' || item.mood === 'prayer');
   const slowBackgrounds = videoBackgroundLibrary.filter(item => item.speed === 'slow' && item.mood !== 'ambient' && item.mood !== 'prayer');
   const fastBackgrounds = videoBackgroundLibrary.filter(item => item.speed === 'fast' && item.mood !== 'ambient' && item.mood !== 'prayer');
@@ -431,6 +518,16 @@ export default function EasyWorshipController() {
     if (!lastBroadcastAt) return 'Waiting';
     return new Date(lastBroadcastAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   }, [lastBroadcastAt]);
+
+  useEffect(() => {
+    if (!liveText || quickSlides.length === 0) {
+      setLiveSlideIndex(prev => (prev === null ? prev : null));
+      return;
+    }
+
+    const matchedIndex = quickSlides.findIndex(slide => slide.text === liveText);
+    setLiveSlideIndex(prev => (prev === matchedIndex ? prev : matchedIndex >= 0 ? matchedIndex : null));
+  }, [liveText, quickSlides]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -543,11 +640,61 @@ export default function EasyWorshipController() {
     }
   };
 
+  const handleUploadVideoSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (draftUploadObjectUrlRef.current) {
+      URL.revokeObjectURL(draftUploadObjectUrlRef.current);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    draftUploadObjectUrlRef.current = objectUrl;
+    setUploadedVideoFile(file);
+    setVideoInputMode('upload');
+    setBgType('video');
+    setSelectedVideoBackgroundId(null);
+    setUploadedVideoStoragePath(null);
+    setActiveVideoBlobKey(null);
+    setVideoUrl(objectUrl);
+    setIsUploadingVideo(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('video', file);
+
+      const response = await instance.post('background-videos/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      const uploadedUrl = response.data?.url;
+      const storagePath = response.data?.path;
+
+      if (!uploadedUrl || !storagePath) {
+        throw new Error('Upload response missing URL or path');
+      }
+
+      setVideoUrl(resolveBackgroundVideoUrl(uploadedUrl, storagePath));
+      setUploadedVideoStoragePath(storagePath);
+      Toast.fire({ icon: 'success', title: `${file.name} uploaded` });
+    } catch (error) {
+      console.error('Failed to upload background video:', error);
+      setVideoUrl('');
+      setUploadedVideoStoragePath(null);
+      setUploadedVideoFile(null);
+      Toast.fire({ icon: 'error', title: 'Video upload failed' });
+    } finally {
+      setIsUploadingVideo(false);
+      event.target.value = '';
+    }
+  };
+
   const applyVideoBackground = (background: VideoBackgroundItem) => {
     setBgType('video');
     setVideoUrl(resolveBackgroundVideoUrl(background.url, background.storagePath));
     setSelectedVideoBackgroundId(background.id);
     setVideoInputMode(background.sourceType);
+    setUploadedVideoFile(null);
     setUploadedVideoStoragePath(background.storagePath || null);
     setActiveVideoBlobKey(null);
     Toast.fire({ icon: 'success', title: `${background.name} ready` });
@@ -633,6 +780,10 @@ export default function EasyWorshipController() {
 
     setVideoBackgroundLibrary(prev => [newBackground, ...prev]);
     setSelectedVideoBackgroundId(newBackground.id);
+    setUploadedVideoFile(null);
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = '';
+    }
     Toast.fire({ icon: 'success', title: 'Saved to background library' });
   };
 
@@ -739,6 +890,11 @@ export default function EasyWorshipController() {
         </div>
 
         <div className="flex items-center gap-3">
+          {!showMonitor && (
+            <button onClick={() => setShowMonitor(true)} className="flex items-center gap-2 px-7 py-4 bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all">
+              <MonitorPlay className="w-4 h-4" /> Show Live Monitor
+            </button>
+          )}
           <button onClick={handleOpenProjector} className="flex items-center gap-2 px-7 py-4 bg-zinc-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-zinc-800 hover:scale-105 active:scale-95 transition-all border border-zinc-700">
             <Monitor className="w-4 h-4" /> Open Projector
           </button>
@@ -808,6 +964,234 @@ export default function EasyWorshipController() {
           </p>
         </div>
       </div>
+
+      {showMonitor && (
+        <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".monitor-close,button,input,select,option" bounds="parent">
+          <div ref={nodeRef} className="fixed top-28 right-3 md:right-6 lg:right-8 z-100 w-[min(calc(100vw-1.5rem),42rem)] bg-zinc-950 p-4 md:p-5 rounded-[2.5rem] border border-zinc-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between px-2 cursor-move drag-handle">
+              <div className="flex items-center gap-2 text-zinc-500">
+                <GripHorizontal className="w-4 h-4" />
+                <span className="text-[9px] font-black uppercase tracking-widest">Live Monitor</span>
+              </div>
+              <button onClick={() => setShowMonitor(false)} className="monitor-close text-zinc-600 hover:text-red-500 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div ref={monitorFrameRef} className={`aspect-video w-full rounded-2xl border border-zinc-900 overflow-hidden relative transition-all duration-1000 group/monitor ${bgType === 'praise' ? 'bg-indigo-900 animate-pulse' : bgType === 'worship' ? 'bg-zinc-950' : bgType === 'green' ? 'bg-[#00FF00]' : 'bg-black'}`}>
+              <div
+                className="absolute left-1/2 top-1/2 origin-center"
+                style={{
+                  width: '1920px',
+                  height: '1080px',
+                  transform: `translate(-50%, -50%) scale(${monitorScale})`,
+                }}
+              >
+                {bgType === 'video' && videoUrl && (
+                  <video key={videoUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={videoUrl} />
+                )}
+                <div className="absolute inset-0 flex items-center justify-center p-24">
+                  <p
+                    className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10 w-full"
+                    style={{
+                      fontSize: `${previewFontSize}px`,
+                      fontFamily,
+                      fontWeight: isBold ? 'bold' : 'normal',
+                      textTransform: isAllCaps ? 'uppercase' : 'none',
+                      WebkitTextStroke: '2px #000',
+                      textShadow: '0 8px 40px rgba(0,0,0,0.85)'
+                    }}
+                  >
+                    {liveText || (
+                      <span className="text-white/10 italic text-[42px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset', textTransform: 'none' }}>
+                        CLEARED
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="absolute inset-0 z-20 rounded-2xl bg-black/85 backdrop-blur-sm opacity-0 group-hover/monitor:opacity-100 transition-opacity duration-200 flex flex-col gap-2 p-4 overflow-y-auto pointer-events-none">
+                <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400 mb-1">Projector Output</p>
+                <div className="flex-1 overflow-y-auto">
+                  {liveText ? (
+                    <p className="text-white text-[11px] font-bold leading-relaxed whitespace-pre-wrap">{liveText}</p>
+                  ) : (
+                    <p className="text-zinc-600 italic text-[10px]">No output. Screen is cleared.</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-zinc-700 mt-auto">
+                  <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">BG: {bgType}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">Size: {previewFontSize}px</span>
+                  <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider" style={{ fontFamily }}>{fontFamily.split(',')[0]}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${isBold ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-600'}`}>Bold: {isBold ? 'ON' : 'OFF'}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${isAllCaps ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-600'}`}>Caps: {isAllCaps ? 'ON' : 'OFF'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 px-1">
+              <div className="rounded-[1.6rem] border border-zinc-800 bg-zinc-900/80 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-500">Monitor Status</p>
+                    <p className="text-[11px] font-bold text-zinc-100">{liveText ? 'Live output on screen' : 'Screen is currently cleared'}</p>
+                  </div>
+                  <div className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${isProjectorOpen ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-500'}`}>
+                    {isProjectorOpen ? 'Projector On' : 'Projector Off'}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                    <p className="text-[7px] font-black uppercase tracking-[0.22em] text-zinc-600">Live Slide</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-200">{currentLiveSlide ? `#${liveSlideIndex! + 1}` : 'None'}</p>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                    <p className="text-[7px] font-black uppercase tracking-[0.22em] text-zinc-600">Last Push</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-200">{lastBroadcastLabel}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[1.6rem] border border-zinc-800 bg-zinc-900/80 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-500">Background Presets</p>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-600">Active: {bgType}</span>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {(['none', 'praise', 'worship', 'green', 'video'] as BackgroundType[]).map(t => (
+                    <button key={t} onClick={() => setBgType(t)} className={`py-2 rounded-xl text-[8px] font-black uppercase border transition-all ${bgType === t ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+
+                {bgType === 'video' && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          setVideoInputMode('link');
+                          setUploadedVideoFile(null);
+                          setUploadedVideoStoragePath(null);
+                          setActiveVideoBlobKey(null);
+                          if (selectedVideoBackground?.sourceType === 'upload' || draftUploadObjectUrlRef.current === videoUrl) {
+                            setVideoUrl('');
+                            setSelectedVideoBackgroundId(null);
+                          }
+                        }}
+                        className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${
+                          videoInputMode === 'link' ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'
+                        }`}
+                      >
+                        Link
+                      </button>
+                      <button
+                        onClick={() => setVideoInputMode('upload')}
+                        className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${
+                          videoInputMode === 'upload' ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'
+                        }`}
+                      >
+                        Upload Video
+                      </button>
+                    </div>
+
+                    {videoInputMode === 'link' ? (
+                      <>
+                        <input
+                          type="text"
+                          placeholder="Paste video URL (.mp4)..."
+                          value={videoInputMode === 'link' ? videoUrl : ''}
+                          onChange={(e) => {
+                            setUploadedVideoFile(null);
+                            setUploadedVideoStoragePath(null);
+                            setSelectedVideoBackgroundId(null);
+                            setActiveVideoBlobKey(null);
+                            setVideoUrl(e.target.value);
+                          }}
+                          className={`w-full text-[9px] rounded-xl px-3 py-2 border placeholder-zinc-700 outline-none ${
+                            hasValidVideoUrl ? 'bg-zinc-900 text-zinc-300 border-zinc-800 focus:border-indigo-500' : 'bg-amber-950/30 text-amber-100 border-amber-800/70 focus:border-amber-500'
+                          }`}
+                        />
+                        {!hasValidVideoUrl && (
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-amber-400">Add a valid video source to avoid a blank background.</p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          ref={uploadInputRef}
+                          type="file"
+                          accept="video/mp4,video/webm,video/ogg"
+                          onChange={handleUploadVideoSelect}
+                          className="hidden"
+                        />
+                        <button
+                          onClick={() => uploadInputRef.current?.click()}
+                          disabled={isUploadingVideo}
+                          className="w-full px-3 py-3 rounded-xl border border-dashed border-zinc-700 bg-zinc-900 text-zinc-300 text-[9px] font-black uppercase tracking-widest hover:border-indigo-500 hover:text-white transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                        >
+                          {isUploadingVideo ? (
+                            <>
+                              <LoaderCircle className="w-4 h-4 animate-spin" />
+                              Uploading video...
+                            </>
+                          ) : uploadedVideoFile ? (
+                            `Selected: ${uploadedVideoFile.name}`
+                          ) : (
+                            'Choose MP4 / WebM / OGG file'
+                          )}
+                        </button>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">Upload sends the file to your Laravel backend for OBS-safe playback.</p>
+                      </>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button onClick={handleSaveVideoBackground} className="flex-1 px-3 py-2 rounded-xl bg-indigo-500 text-white text-[8px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-colors">
+                        Save to Library
+                      </button>
+                      {selectedVideoBackground && (
+                        <span className="px-2 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-400">
+                          {selectedVideoBackground.name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-[1.6rem] border border-zinc-800 bg-zinc-900/80 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-500">Typography</p>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-600">{previewFontSize}px</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Type className="w-3 h-3 text-zinc-600 shrink-0" />
+                  <select
+                    value={fontFamily}
+                    onChange={(e) => setFontFamily(e.target.value)}
+                    className="flex-1 bg-zinc-900 text-zinc-300 text-[9px] font-bold rounded-xl px-2 py-2 border border-zinc-800 outline-none focus:border-indigo-500 cursor-pointer"
+                    style={{ fontFamily }}
+                  >
+                    {FONTS.map(f => (
+                      <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => setIsBold(b => !b)} className={`px-3 py-2 rounded-xl text-[9px] font-black border transition-all ${isBold ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>Bold</button>
+                  <button onClick={() => setIsAllCaps(c => !c)} className={`px-3 py-2 rounded-xl text-[9px] font-black border transition-all ${isAllCaps ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>Caps</button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-3 h-3 text-zinc-600 shrink-0" />
+                  <button onClick={() => setPreviewFontSize(s => Math.max(20, s - 1))} className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-sm font-black transition-colors shrink-0">-</button>
+                  <input type="range" min="20" max="200" value={previewFontSize} onChange={(e) => setPreviewFontSize(parseInt(e.target.value))} className="flex-1 h-1.5 bg-zinc-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
+                  <button onClick={() => setPreviewFontSize(s => Math.min(200, s + 1))} className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-sm font-black transition-colors shrink-0">+</button>
+                  <span className="text-[10px] font-bold text-zinc-500 tabular-nums w-11 text-right">{previewFontSize}px</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Draggable>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start w-full mx-auto">
         <div className="w-full">

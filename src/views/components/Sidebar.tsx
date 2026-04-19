@@ -27,7 +27,7 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, isCollapsed, setIsCol
     { id: 'playlist', path: '/app/playlist', label: 'My Playlists', icon: Folder },
     { id: 'saved', path: '/app/saved', label: 'Saved Songs', icon: Bookmark },
     { id: 'history', path: '/app/history', label: 'History', icon: History },
-    { id: 'easyworship', path: '/app/easyworship', label: 'EasyWorship', icon: Presentation },
+    { id: 'easyworship', path: '/app/easyworship', label: 'Worship Presenter', icon: Presentation },
     { id: 'ppt-presentation', path: '/app/ppt-presentation', label: 'PPT Presentation', icon: MonitorDot },
     { id: 'settings', path: '/app/settings', label: 'Settings', icon: Settings },
   ];

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Search, XCircle, DownloadCloud } from 'lucide-react';
 import type { PlaylistFolder, Song } from '../types';
-import Swal from 'sweetalert2'; // GIDUGANG ANG SWEETALERT2
+import Swal from 'sweetalert2';
+import { fetchSongResourcesSmart } from './songData';
 
 const Toast = Swal.mixin({
   toast: true,
@@ -21,16 +22,14 @@ interface YoutubePreviewProps {
   inputValue: string;
 }
 
-export default function YoutubePreview({ 
-  youtubeResults, setYoutubeResults, isFetching, 
+export default function YoutubePreview({
+  youtubeResults, setYoutubeResults, isFetching,
   activeFolderId, setFolders, setInputValue
 }: YoutubePreviewProps) {
-  
+
   const [importingId, setImportingId] = useState<string | null>(null);
 
   const handleImportYT = async (yt: any) => {
-    
-    // SWAL CONFIRMATION BEFORE IMPORTING
     const confirmImport = await Swal.fire({
       title: 'Import Song?',
       text: `Do you want to add "${yt.title}" to your library?`,
@@ -41,52 +40,60 @@ export default function YoutubePreview({
       confirmButtonText: 'Yes, import it!'
     });
 
-    if (!confirmImport.isConfirmed) return; // Cancel if user says no
+    if (!confirmImport.isConfirmed) return;
 
     setImportingId(yt.videoId);
 
-    let cleanTitle = yt.title.replace(/\([^)]*\)|\[[^\]]*\]|Official Video|Lyrics|Audio|Music Video/gi, '').trim();
-    let searchArtist = yt.author.replace(/VEVO|Topic|Official|Channel/gi, '').trim();
-
-    let fetchedLyrics = "";
-    try {
-      const lyricRes = await fetch(`https://lrclib.net/api/search?q=${encodeURIComponent(`${searchArtist} ${cleanTitle}`)}`);
-      const lyricData = await lyricRes.json();
-      if (lyricData && lyricData.length > 0 && lyricData[0].plainLyrics) {
-        fetchedLyrics = lyricData[0].plainLyrics;
-      }
-    } catch (err) {}
-
-    const newSong: Song = { 
-      id: Date.now().toString(), 
-      title: yt.title, 
-      artist: yt.author, 
-      url: yt.url, 
-      lyrics: fetchedLyrics,
-      chords: "" 
+    const pendingSong: Song = {
+      id: Date.now().toString(),
+      title: yt.title,
+      artist: yt.author,
+      url: yt.url,
+      lyrics: '',
+      chords: '',
+      isGenerating: true,
     };
 
-    setFolders((prev: PlaylistFolder[]) => {
+    // Insert immediately so skeleton shows in SongList
+    const insertIntoFolder = (prev: PlaylistFolder[]) => {
       if (activeFolderId) {
-        return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, newSong] } : f);
-      } else {
-        const defaultIndex = prev.findIndex(f => f.name === "Saved Library" || f.name === "Uncategorized");
-        if (defaultIndex !== -1) {
-          const updated = [...prev];
-          updated[defaultIndex].songs.push(newSong);
-          return updated;
-        } else {
-          return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
-        }
+        return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, pendingSong] } : f);
       }
-    });
-    
-    setImportingId(null);
-    setYoutubeResults([]); 
+      const defaultIndex = prev.findIndex(f => f.name === "Saved Library" || f.name === "Uncategorized");
+      if (defaultIndex !== -1) {
+        const updated = [...prev];
+        updated[defaultIndex] = { ...updated[defaultIndex], songs: [...updated[defaultIndex].songs, pendingSong] };
+        return updated;
+      }
+      return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [pendingSong] }];
+    };
+
+    setFolders(insertIntoFolder);
+    setYoutubeResults([]);
     setInputValue('');
-    
-    // SUCCESS TOAST MESSAGE
-    Toast.fire({ icon: 'success', title: 'Song imported successfully!' });
+
+    try {
+      const { lyrics, chords } = await fetchSongResourcesSmart(yt.author, yt.title);
+      setFolders(prev => prev.map(folder => ({
+        ...folder,
+        songs: folder.songs.map(s => s.id === pendingSong.id
+          ? { ...s, lyrics, chords, isGenerating: false }
+          : s
+        ),
+      })));
+      Toast.fire({
+        icon: lyrics || chords ? 'success' : 'info',
+        title: lyrics || chords ? 'Imported with auto-generated data!' : 'Imported, but no lyrics found online.',
+      });
+    } catch {
+      setFolders(prev => prev.map(folder => ({
+        ...folder,
+        songs: folder.songs.map(s => s.id === pendingSong.id ? { ...s, isGenerating: false } : s),
+      })));
+      Toast.fire({ icon: 'warning', title: 'Imported, but generation failed.' });
+    } finally {
+      setImportingId(null);
+    }
   };
 
   if (!isFetching && youtubeResults.length === 0) return null;

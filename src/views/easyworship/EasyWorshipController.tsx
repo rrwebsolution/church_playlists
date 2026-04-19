@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Presentation, Settings2, GripHorizontal, X, MonitorPlay, Type, Monitor } from 'lucide-react';
+import { Presentation, Settings2, GripHorizontal, X, MonitorPlay, Type, Monitor, Activity, Clapperboard, Radio, AlertTriangle, Film, Plus, Sparkles, Trash2 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import Draggable from 'react-draggable';
 import instance from '../../plugin/axios';
@@ -40,14 +40,24 @@ export interface ArchiveFolder {
 }
 
 type BackgroundType = 'none' | 'praise' | 'worship' | 'green' | 'video';
+type BackgroundSpeed = 'slow' | 'medium' | 'fast';
+type BackgroundMood = 'worship' | 'praise' | 'ambient' | 'prayer';
+
+interface VideoBackgroundItem {
+  id: string;
+  name: string;
+  url: string;
+  speed: BackgroundSpeed;
+  mood: BackgroundMood;
+  createdAt: number;
+}
 
 export default function EasyWorshipController() {
+  const [inputTitle, setInputTitle] = useState(() => localStorage.getItem('ew_draft_title') || '');
+  const [inputText, setInputText] = useState(() => localStorage.getItem('ew_draft_text') || '');
 
-  const [inputTitle, setInputTitle] = useState(() => localStorage.getItem('ew_draft_title') || "");
-  const [inputText, setInputText] = useState(() => localStorage.getItem('ew_draft_text') || "");
-
-  const [liveText, setLiveText] = useState("");
-  const [lastLiveText, setLastLiveText] = useState("");
+  const [liveText, setLiveText] = useState('');
+  const [lastLiveText, setLastLiveText] = useState('');
   const [previewFontSize, setPreviewFontSize] = useState(() => {
     const saved = localStorage.getItem('ew_font_size');
     return saved ? parseInt(saved) : 100;
@@ -57,8 +67,11 @@ export default function EasyWorshipController() {
   const [isAllCaps, setIsAllCaps] = useState(() => localStorage.getItem('ew_allcaps') !== 'false');
   const [bgType, setBgType] = useState<BackgroundType>('green');
   const [videoUrl, setVideoUrl] = useState(() => localStorage.getItem('ew_video_url') || '');
+  const [selectedVideoBackgroundId, setSelectedVideoBackgroundId] = useState<string | null>(() => localStorage.getItem('ew_selected_video_bg_id'));
   const [showMonitor, setShowMonitor] = useState(true);
   const [liveSlideIndex, setLiveSlideIndex] = useState<number | null>(null);
+  const [isProjectorOpen, setIsProjectorOpen] = useState(false);
+  const [lastBroadcastAt, setLastBroadcastAt] = useState<number | null>(null);
   const nodeRef = useRef(null);
 
   const [currentArchiveId, setCurrentArchiveId] = useState<string | null>(null);
@@ -67,6 +80,7 @@ export default function EasyWorshipController() {
   const handleOpenProjector = () => {
     if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
       projectorWindowRef.current.focus();
+      setIsProjectorOpen(true);
       return;
     }
     projectorWindowRef.current = window.open(
@@ -74,16 +88,31 @@ export default function EasyWorshipController() {
       'projector_output',
       'width=1920,height=1080,menubar=no,toolbar=no,location=no,status=no'
     );
+    setIsProjectorOpen(!!projectorWindowRef.current && !projectorWindowRef.current.closed);
   };
 
   const [archiveFolders, setArchiveFolders] = useState<ArchiveFolder[]>(() => {
     const saved = localStorage.getItem('jamc_ew_folders');
-    return saved ? JSON.parse(saved) :[{ id: 'default', name: 'General Library', items: [] }];
+    return saved ? JSON.parse(saved) : [{ id: 'default', name: 'General Library', items: [] }];
+  });
+  const [videoBackgroundLibrary, setVideoBackgroundLibrary] = useState<VideoBackgroundItem[]>(() => {
+    const saved = localStorage.getItem('jamc_ew_video_library');
+    if (!saved) return [];
+
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return [];
+    }
   });
 
   useEffect(() => {
     localStorage.setItem('jamc_ew_folders', JSON.stringify(archiveFolders));
   }, [archiveFolders]);
+
+  useEffect(() => {
+    localStorage.setItem('jamc_ew_video_library', JSON.stringify(videoBackgroundLibrary));
+  }, [videoBackgroundLibrary]);
 
   useEffect(() => {
     const draftTimer = setTimeout(() => {
@@ -102,56 +131,122 @@ export default function EasyWorshipController() {
     localStorage.setItem('ew_font_family', fontFamily);
   }, [fontFamily]);
 
-  useEffect(() => { localStorage.setItem('ew_bold', String(isBold)); }, [isBold]);
-  useEffect(() => { localStorage.setItem('ew_allcaps', String(isAllCaps)); }, [isAllCaps]);
+  useEffect(() => {
+    localStorage.setItem('ew_bold', String(isBold));
+  }, [isBold]);
+
+  useEffect(() => {
+    localStorage.setItem('ew_allcaps', String(isAllCaps));
+  }, [isAllCaps]);
 
   useEffect(() => {
     localStorage.setItem('ew_video_url', videoUrl);
   }, [videoUrl]);
 
-  const isOutputCleared = liveText === "";
+  useEffect(() => {
+    const matchingBackground = videoBackgroundLibrary.find(item => item.url === videoUrl);
+    if (matchingBackground) {
+      setSelectedVideoBackgroundId(prev => (prev === matchingBackground.id ? prev : matchingBackground.id));
+      return;
+    }
 
-  const broadcastData = async (text: string, size: number, bg: string, font: string, vidUrl: string = '', bold = isBold, allCaps = isAllCaps) => {
+    if (selectedVideoBackgroundId && bgType === 'video') {
+      setSelectedVideoBackgroundId(null);
+    }
+  }, [videoUrl, videoBackgroundLibrary, bgType, selectedVideoBackgroundId]);
+
+  useEffect(() => {
+    if (selectedVideoBackgroundId) {
+      localStorage.setItem('ew_selected_video_bg_id', selectedVideoBackgroundId);
+      return;
+    }
+    localStorage.removeItem('ew_selected_video_bg_id');
+  }, [selectedVideoBackgroundId]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const isOpen = !!projectorWindowRef.current && !projectorWindowRef.current.closed;
+      setIsProjectorOpen(isOpen);
+      if (!isOpen) projectorWindowRef.current = null;
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const isOutputCleared = liveText === '';
+
+  const broadcastData = async (
+    text: string,
+    size: number,
+    bg: string,
+    font: string,
+    vidUrl: string = '',
+    bold = isBold,
+    allCaps = isAllCaps
+  ) => {
     setLiveText(text);
+    setLastBroadcastAt(Date.now());
     const data = { text, fontSize: size, background: bg, fontFamily: font, videoUrl: vidUrl, bold, allCaps, updatedAt: Date.now() };
-    // Write to localStorage so the projector window on same browser syncs instantly
     localStorage.setItem('jamc_live_display', JSON.stringify(data));
     try {
       await instance.post('obs-state', data);
     } catch (err) {
-      console.error("Failed to broadcast data:", err);
+      console.error('Failed to broadcast data:', err);
       Toast.fire({ icon: 'error', title: 'Broadcast Failed!' });
     }
   };
 
   const quickSlides = useMemo(() => {
-    if (!inputText.trim()) return[];
-    return inputText.split(/\n\s*\n/).map(block => {
-      const lines = block.trim().split('\n');
-      const firstLine = lines[0].trim();
-      const headerRegex = /^\[?(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Tag|Ending|Instrumental)[^\]]*\]?:?$/i;
-      if (headerRegex.test(firstLine) && lines.length > 1) {
-        return { label: firstLine.replace(/[\[\]:]/g, '').toUpperCase(), text: lines.slice(1).join('\n').trim() };
-      }
-      return { label: null, text: block.trim() };
-    }).filter(b => b.text.length > 0);
+    if (!inputText.trim()) return [];
+    return inputText
+      .split(/\n\s*\n/)
+      .map(block => {
+        const lines = block.trim().split('\n');
+        const firstLine = lines[0].trim();
+        const headerRegex = /^\[?(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Tag|Ending|Instrumental)[^\]]*\]?:?$/i;
+        if (headerRegex.test(firstLine) && lines.length > 1) {
+          return { label: firstLine.replace(/[\[\]:]/g, '').toUpperCase(), text: lines.slice(1).join('\n').trim() };
+        }
+        return { label: null, text: block.trim() };
+      })
+      .filter(b => b.text.length > 0);
   }, [inputText]);
+
+  const currentLiveSlide = liveSlideIndex !== null ? quickSlides[liveSlideIndex] : null;
+  const slideCount = quickSlides.length;
+  const lineCount = useMemo(() => inputText.split('\n').filter(line => line.trim()).length, [inputText]);
+  const hasVideoBackground = bgType === 'video';
+  const hasValidVideoUrl = videoUrl.trim().length > 0;
+  const selectedVideoBackground = videoBackgroundLibrary.find(item => item.id === selectedVideoBackgroundId) || null;
+  const slowBackgrounds = videoBackgroundLibrary.filter(item => item.speed === 'slow');
+  const fastBackgrounds = videoBackgroundLibrary.filter(item => item.speed === 'fast');
+  const ambientBackgrounds = videoBackgroundLibrary.filter(item => item.mood === 'ambient' || item.mood === 'prayer');
+  const lastBroadcastLabel = useMemo(() => {
+    if (!lastBroadcastAt) return 'Waiting';
+    return new Date(lastBroadcastAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  }, [lastBroadcastAt]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (liveSlideIndex !== null && quickSlides[liveSlideIndex]) {
         const updatedText = quickSlides[liveSlideIndex].text;
-        if (updatedText !== liveText && liveText !== "") broadcastData(updatedText, previewFontSize, bgType, fontFamily, videoUrl);
+        if (updatedText !== liveText && liveText !== '') {
+          broadcastData(updatedText, previewFontSize, bgType, fontFamily, videoUrl);
+        }
       }
     }, 200);
     return () => clearTimeout(timer);
   }, [quickSlides, liveSlideIndex, liveText, previewFontSize, bgType, fontFamily, videoUrl]);
 
-  useEffect(() => { if (liveText !== "") broadcastData(liveText, previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps); },[previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps]);
+  useEffect(() => {
+    if (liveText !== '') {
+      broadcastData(liveText, previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps);
+    }
+  }, [previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps]);
 
   const handleClearEditor = () => {
-    setInputTitle("");
-    setInputText("");
+    setInputTitle('');
+    setInputText('');
     setLiveSlideIndex(null);
     setCurrentArchiveId(null);
     localStorage.removeItem('ew_draft_title');
@@ -166,22 +261,26 @@ export default function EasyWorshipController() {
     }
 
     if (currentArchiveId) {
-      setArchiveFolders(prev => prev.map(folder => ({
-        ...folder,
-        items: folder.items.map(item =>
-          item.id === currentArchiveId
-            ? { ...item, title: inputTitle.trim() || 'Untitled Document', text: inputText.trim(), date: new Date().toLocaleDateString() }
-            : item
-        )
-      })));
+      setArchiveFolders(prev =>
+        prev.map(folder => ({
+          ...folder,
+          items: folder.items.map(item =>
+            item.id === currentArchiveId
+              ? { ...item, title: inputTitle.trim() || 'Untitled Document', text: inputText.trim(), date: new Date().toLocaleDateString() }
+              : item
+          )
+        }))
+      );
       Toast.fire({ icon: 'success', title: 'Updated in Folder!' });
       handleClearEditor();
       return;
     }
 
     const folderOptions: Record<string, string> = {};
-    archiveFolders.forEach(f => { folderOptions[f.id] = `📁 ${f.name}`; });
-    folderOptions['NEW_FOLDER'] = '➕ Create New Folder...';
+    archiveFolders.forEach(f => {
+      folderOptions[f.id] = `[Folder] ${f.name}`;
+    });
+    folderOptions.NEW_FOLDER = '[New] Create New Folder...';
 
     const { value: selectedFolderId } = await Swal.fire({
       title: 'Save to Folder',
@@ -200,13 +299,13 @@ export default function EasyWorshipController() {
         title: 'New Folder Name',
         input: 'text',
         showCancelButton: true,
-        inputValidator: (value) => !value ? 'Folder name is required!' : null
+        inputValidator: value => (!value ? 'Folder name is required!' : null)
       });
       if (!folderName) return;
 
       targetFolderId = Date.now().toString();
       const newFolder: ArchiveFolder = { id: targetFolderId, name: folderName, items: [] };
-      setArchiveFolders(prev =>[...prev, newFolder]);
+      setArchiveFolders(prev => [...prev, newFolder]);
     }
 
     const newItem: SavedItem = {
@@ -216,11 +315,13 @@ export default function EasyWorshipController() {
       date: new Date().toLocaleDateString()
     };
 
-    setArchiveFolders(prev => prev.map(folder =>
-      folder.id === targetFolderId
-        ? { ...folder, items: [newItem, ...folder.items] }
-        : folder
-    ));
+    setArchiveFolders(prev =>
+      prev.map(folder =>
+        folder.id === targetFolderId
+          ? { ...folder, items: [newItem, ...folder.items] }
+          : folder
+      )
+    );
 
     Toast.fire({ icon: 'success', title: 'Saved to Library!' });
     handleClearEditor();
@@ -229,21 +330,121 @@ export default function EasyWorshipController() {
   const handleBlackoutToggle = () => {
     if (!isOutputCleared) {
       setLastLiveText(liveText);
-      broadcastData("", previewFontSize, bgType, fontFamily, videoUrl);
+      broadcastData('', previewFontSize, bgType, fontFamily, videoUrl);
     } else {
       broadcastData(lastLiveText, previewFontSize, bgType, fontFamily, videoUrl);
-      setLastLiveText("");
+      setLastLiveText('');
     }
+  };
+
+  const applyVideoBackground = (background: VideoBackgroundItem) => {
+    setBgType('video');
+    setVideoUrl(background.url);
+    setSelectedVideoBackgroundId(background.id);
+    Toast.fire({ icon: 'success', title: `${background.name} ready` });
+  };
+
+  const handleSaveVideoBackground = async () => {
+    const trimmedUrl = videoUrl.trim();
+    if (!trimmedUrl) {
+      Toast.fire({ icon: 'warning', title: 'Add a video URL first' });
+      return;
+    }
+
+    const existingBackground = videoBackgroundLibrary.find(item => item.url === trimmedUrl);
+    if (existingBackground) {
+      setSelectedVideoBackgroundId(existingBackground.id);
+      Toast.fire({ icon: 'info', title: 'Already saved in library' });
+      return;
+    }
+
+    const { isConfirmed, value } = await Swal.fire<{
+      name: string;
+      speed: BackgroundSpeed;
+      mood: BackgroundMood;
+    }>({
+      title: 'Save Background',
+      html: `
+        <input id="ew-bg-name" class="swal2-input" placeholder="Background name" value="Sunday Motion">
+        <select id="ew-bg-speed" class="swal2-input">
+          <option value="slow">Slow</option>
+          <option value="medium">Medium</option>
+          <option value="fast">Fast</option>
+        </select>
+        <select id="ew-bg-mood" class="swal2-input">
+          <option value="worship">Worship</option>
+          <option value="praise">Praise</option>
+          <option value="ambient">Ambient</option>
+          <option value="prayer">Prayer</option>
+        </select>
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonColor: '#4f46e5',
+      preConfirm: () => {
+        const popup = Swal.getPopup();
+        const name = (popup?.querySelector('#ew-bg-name') as HTMLInputElement | null)?.value.trim() || '';
+        const speed = ((popup?.querySelector('#ew-bg-speed') as HTMLSelectElement | null)?.value || 'slow') as BackgroundSpeed;
+        const mood = ((popup?.querySelector('#ew-bg-mood') as HTMLSelectElement | null)?.value || 'worship') as BackgroundMood;
+
+        if (!name) {
+          Swal.showValidationMessage('Background name is required.');
+          return null;
+        }
+
+        return { name, speed, mood };
+      }
+    });
+
+    if (!isConfirmed) return;
+
+    if (!value) return;
+
+    const newBackground: VideoBackgroundItem = {
+      id: Date.now().toString(),
+      name: value.name,
+      url: trimmedUrl,
+      speed: value.speed,
+      mood: value.mood,
+      createdAt: Date.now()
+    };
+
+    setVideoBackgroundLibrary(prev => [newBackground, ...prev]);
+    setSelectedVideoBackgroundId(newBackground.id);
+    Toast.fire({ icon: 'success', title: 'Saved to background library' });
+  };
+
+  const handleDeleteVideoBackground = async (backgroundId: string) => {
+    const target = videoBackgroundLibrary.find(item => item.id === backgroundId);
+    if (!target) return;
+
+    const result = await Swal.fire({
+      title: 'Delete Background?',
+      text: `${target.name} will be removed from your library.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      confirmButtonText: 'Delete'
+    });
+
+    if (!result.isConfirmed) return;
+
+    setVideoBackgroundLibrary(prev => prev.filter(item => item.id !== backgroundId));
+    if (selectedVideoBackgroundId === backgroundId) {
+      setSelectedVideoBackgroundId(null);
+    }
+    Toast.fire({ icon: 'success', title: 'Background removed' });
   };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-32 px-4 relative min-h-screen font-sans bg-zinc-50 dark:bg-zinc-950">
-
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pt-6 px-2">
         <div className="flex items-center gap-5">
-          <div className="p-4 bg-indigo-500 text-white rounded-3xl shadow-xl shadow-indigo-500/20"><Presentation className="w-8 h-8" /></div>
+          <div className="p-4 bg-indigo-500 text-white rounded-3xl shadow-xl shadow-indigo-500/20">
+            <Presentation className="w-8 h-8" />
+          </div>
           <div>
-            <h1 className="text-3xl md:text-4xl font-black text-zinc-900 dark:text-zinc-100 uppercase italic tracking-tighter">EasyWorship</h1>
+            <h1 className="text-3xl md:text-4xl font-black text-zinc-900 dark:text-zinc-100 uppercase italic tracking-tighter">Worship Presenter</h1>
             <div className="flex items-center gap-2 mt-2">
               <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${liveText ? 'bg-red-500 ring-4 ring-red-500/20' : 'bg-zinc-400'}`} />
               <p className="text-zinc-500 text-[11px] font-black uppercase tracking-widest leading-none">{liveText ? 'Live Broadcast' : 'Screen Cleared'}</p>
@@ -263,85 +464,217 @@ export default function EasyWorshipController() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 px-2">
+        <div className="rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70 backdrop-blur-md px-5 py-4 shadow-sm">
+          <div className="flex items-center gap-3 mb-3">
+            <div className={`p-2 rounded-xl ${liveText ? 'bg-red-500/10 text-red-500' : 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-500'}`}>
+              <Radio className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">Live Status</p>
+              <p className="text-sm font-black text-zinc-900 dark:text-zinc-100">{liveText ? 'Broadcasting now' : 'Output cleared'}</p>
+            </div>
+          </div>
+          <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+            {currentLiveSlide ? `Slide ${liveSlideIndex! + 1} is active on screen.` : 'No slide is currently live.'}
+          </p>
+        </div>
+
+        <div className="rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70 backdrop-blur-md px-5 py-4 shadow-sm">
+          <div className="flex items-center gap-3 mb-3">
+            <div className={`p-2 rounded-xl ${isProjectorOpen ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-500'}`}>
+              <Monitor className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">Projector</p>
+              <p className="text-sm font-black text-zinc-900 dark:text-zinc-100">{isProjectorOpen ? 'Connected' : 'Window closed'}</p>
+            </div>
+          </div>
+          <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Last push: {lastBroadcastLabel}</p>
+        </div>
+
+        <div className="rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70 backdrop-blur-md px-5 py-4 shadow-sm">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500">
+              <Clapperboard className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">Output Style</p>
+              <p className="text-sm font-black text-zinc-900 dark:text-zinc-100 capitalize">{bgType} background</p>
+            </div>
+          </div>
+          <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+            {fontFamily.split(',')[0]} at {previewFontSize}px
+          </p>
+        </div>
+
+        <div className={`rounded-[2rem] border px-5 py-4 shadow-sm backdrop-blur-md ${
+          hasVideoBackground && !hasValidVideoUrl
+            ? 'border-amber-300 bg-amber-50/90 dark:border-amber-800 dark:bg-amber-950/30'
+            : 'border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70'
+        }`}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className={`p-2 rounded-xl ${hasVideoBackground && !hasValidVideoUrl ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-500'}`}>
+              {hasVideoBackground && !hasValidVideoUrl ? <AlertTriangle className="w-4 h-4" /> : <Activity className="w-4 h-4" />}
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-zinc-400">Session</p>
+              <p className="text-sm font-black text-zinc-900 dark:text-zinc-100">{slideCount} slides ready</p>
+            </div>
+          </div>
+          <p className={`text-xs font-semibold ${hasVideoBackground && !hasValidVideoUrl ? 'text-amber-700 dark:text-amber-300' : 'text-zinc-500 dark:text-zinc-400'}`}>
+            {hasVideoBackground && !hasValidVideoUrl ? 'Video background selected but no URL is set.' : `${lineCount} lyric lines prepared in the editor.`}
+          </p>
+        </div>
+      </div>
+
       {showMonitor && (
         <Draggable nodeRef={nodeRef} handle=".drag-handle" bounds="parent">
           <div ref={nodeRef} className="fixed top-28 right-8 z-100 w-full max-w-90 bg-zinc-950 p-4 rounded-[2.5rem] border border-zinc-800 shadow-2xl space-y-4">
             <div className="flex items-center justify-between px-2 cursor-move drag-handle">
-                <div className="flex items-center gap-2 text-zinc-500"><GripHorizontal className="w-4 h-4" /><span className="text-[9px] font-black uppercase tracking-widest">Live Monitor</span></div>
-                <button onClick={() => setShowMonitor(false)} className="text-zinc-600 hover:text-red-500 transition-colors"><X className="w-4 h-4" /></button>
+              <div className="flex items-center gap-2 text-zinc-500">
+                <GripHorizontal className="w-4 h-4" />
+                <span className="text-[9px] font-black uppercase tracking-widest">Live Monitor</span>
+              </div>
+              <button onClick={() => setShowMonitor(false)} className="text-zinc-600 hover:text-red-500 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* Preview screen */}
             <div className={`aspect-video w-full rounded-2xl flex items-center justify-center p-6 border border-zinc-900 overflow-hidden relative transition-all duration-1000 group/monitor ${bgType === 'praise' ? 'bg-indigo-900 animate-pulse' : bgType === 'worship' ? 'bg-zinc-950' : bgType === 'green' ? 'bg-[#00FF00]' : 'bg-black'}`}>
-                {bgType === 'video' && videoUrl && (
-                  <video key={videoUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover rounded-2xl" src={videoUrl} />
+              {bgType === 'video' && videoUrl && (
+                <video key={videoUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover rounded-2xl" src={videoUrl} />
+              )}
+              <p
+                className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10"
+                style={{
+                  fontSize: `${previewFontSize * 0.25}px`,
+                  fontFamily,
+                  fontWeight: isBold ? 'bold' : 'normal',
+                  textTransform: isAllCaps ? 'uppercase' : 'none',
+                  WebkitTextStroke: '0.5px #000',
+                  textShadow: '0 2px 10px rgba(0,0,0,0.5)'
+                }}
+              >
+                {liveText || (
+                  <span className="text-white/10 italic text-[10px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset', textTransform: 'none' }}>
+                    CLEARED
+                  </span>
                 )}
-                <p className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10" style={{ fontSize: `${previewFontSize * 0.25}px`, fontFamily, fontWeight: isBold ? 'bold' : 'normal', textTransform: isAllCaps ? 'uppercase' : 'none', WebkitTextStroke: '0.5px #000', textShadow: '0 2px 10px rgba(0,0,0,0.5)' }}>{liveText || <span className="text-white/10 italic text-[10px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset', textTransform: 'none' }}>CLEARED</span>}</p>
+              </p>
 
-                {/* Hover overlay — shows projector output details */}
-                <div className="absolute inset-0 z-20 rounded-2xl bg-black/85 backdrop-blur-sm opacity-0 group-hover/monitor:opacity-100 transition-opacity duration-200 flex flex-col gap-2 p-4 overflow-y-auto pointer-events-none">
-                  <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400 mb-1">Projector Output</p>
-                  <div className="flex-1 overflow-y-auto">
-                    {liveText ? (
-                      <p className="text-white text-[11px] font-bold leading-relaxed whitespace-pre-wrap">{liveText}</p>
-                    ) : (
-                      <p className="text-zinc-600 italic text-[10px]">No output — screen is cleared.</p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 pt-2 border-t border-zinc-700 mt-auto">
-                    <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">BG: {bgType}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">Size: {previewFontSize}px</span>
-                    <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider" style={{ fontFamily }}>{fontFamily.split(',')[0]}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${isBold ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-600'}`}>Bold: {isBold ? 'ON' : 'OFF'}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${isAllCaps ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-600'}`}>Caps: {isAllCaps ? 'ON' : 'OFF'}</span>
-                  </div>
+              <div className="absolute inset-0 z-20 rounded-2xl bg-black/85 backdrop-blur-sm opacity-0 group-hover/monitor:opacity-100 transition-opacity duration-200 flex flex-col gap-2 p-4 overflow-y-auto pointer-events-none">
+                <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400 mb-1">Projector Output</p>
+                <div className="flex-1 overflow-y-auto">
+                  {liveText ? (
+                    <p className="text-white text-[11px] font-bold leading-relaxed whitespace-pre-wrap">{liveText}</p>
+                  ) : (
+                    <p className="text-zinc-600 italic text-[10px]">No output. Screen is cleared.</p>
+                  )}
                 </div>
+                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-zinc-700 mt-auto">
+                  <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">BG: {bgType}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider">Size: {previewFontSize}px</span>
+                  <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[8px] font-bold uppercase tracking-wider" style={{ fontFamily }}>{fontFamily.split(',')[0]}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${isBold ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-600'}`}>Bold: {isBold ? 'ON' : 'OFF'}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${isAllCaps ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-600'}`}>Caps: {isAllCaps ? 'ON' : 'OFF'}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-3 px-1">
-                {/* Background type buttons */}
+            <div className="space-y-4 px-1">
+              <div className="rounded-[1.6rem] border border-zinc-800 bg-zinc-900/80 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-500">Monitor Status</p>
+                    <p className="text-[11px] font-bold text-zinc-100">{liveText ? 'Live output on screen' : 'Screen is currently cleared'}</p>
+                  </div>
+                  <div className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${isProjectorOpen ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-500'}`}>
+                    {isProjectorOpen ? 'Projector On' : 'Projector Off'}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                    <p className="text-[7px] font-black uppercase tracking-[0.22em] text-zinc-600">Live Slide</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-200">{currentLiveSlide ? `#${liveSlideIndex! + 1}` : 'None'}</p>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                    <p className="text-[7px] font-black uppercase tracking-[0.22em] text-zinc-600">Last Push</p>
+                    <p className="mt-1 text-[11px] font-bold text-zinc-200">{lastBroadcastLabel}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[1.6rem] border border-zinc-800 bg-zinc-900/80 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-500">Background Presets</p>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-600">Active: {bgType}</span>
+                </div>
                 <div className="grid grid-cols-5 gap-1.5">
-                   {(['none', 'praise', 'worship', 'green', 'video'] as BackgroundType[]).map(t => (
-                      <button key={t} onClick={() => setBgType(t)} className={`py-2 rounded-xl text-[8px] font-black uppercase border transition-all ${bgType === t ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>{t}</button>
-                   ))}
+                  {(['none', 'praise', 'worship', 'green', 'video'] as BackgroundType[]).map(t => (
+                    <button key={t} onClick={() => setBgType(t)} className={`py-2 rounded-xl text-[8px] font-black uppercase border transition-all ${bgType === t ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>
+                      {t}
+                    </button>
+                  ))}
                 </div>
 
-                {/* Video URL input */}
                 {bgType === 'video' && (
-                  <input
-                    type="text"
-                    placeholder="Paste video URL (.mp4)..."
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
-                    className="w-full bg-zinc-900 text-zinc-300 text-[9px] rounded-xl px-3 py-2 border border-zinc-800 placeholder-zinc-700 outline-none focus:border-indigo-500"
-                  />
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Paste video URL (.mp4)..."
+                      value={videoUrl}
+                      onChange={(e) => setVideoUrl(e.target.value)}
+                      className={`w-full text-[9px] rounded-xl px-3 py-2 border placeholder-zinc-700 outline-none ${
+                        hasValidVideoUrl ? 'bg-zinc-900 text-zinc-300 border-zinc-800 focus:border-indigo-500' : 'bg-amber-950/30 text-amber-100 border-amber-800/70 focus:border-amber-500'
+                      }`}
+                    />
+                    {!hasValidVideoUrl && (
+                      <p className="text-[8px] font-bold uppercase tracking-widest text-amber-400">Add a valid video source to avoid a blank background.</p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button onClick={handleSaveVideoBackground} className="flex-1 px-3 py-2 rounded-xl bg-indigo-500 text-white text-[8px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-colors">
+                        Save to Library
+                      </button>
+                      {selectedVideoBackground && (
+                        <span className="px-2 py-1 rounded-xl bg-zinc-950 border border-zinc-800 text-[8px] font-bold uppercase tracking-widest text-zinc-400">
+                          {selectedVideoBackground.name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 )}
+              </div>
 
-                {/* Font family selector */}
+              <div className="rounded-[1.6rem] border border-zinc-800 bg-zinc-900/80 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[8px] font-black uppercase tracking-[0.22em] text-zinc-500">Typography</p>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-600">{previewFontSize}px</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <Type className="w-3 h-3 text-zinc-600 shrink-0" />
                   <select
                     value={fontFamily}
                     onChange={(e) => setFontFamily(e.target.value)}
-                    className="flex-1 bg-zinc-900 text-zinc-300 text-[9px] font-bold rounded-xl px-2 py-1.5 border border-zinc-800 outline-none focus:border-indigo-500 cursor-pointer"
+                    className="flex-1 bg-zinc-900 text-zinc-300 text-[9px] font-bold rounded-xl px-2 py-2 border border-zinc-800 outline-none focus:border-indigo-500 cursor-pointer"
                     style={{ fontFamily }}
                   >
                     {FONTS.map(f => (
                       <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
                     ))}
                   </select>
-                  <button onClick={() => setIsBold(b => !b)} className={`px-2.5 py-1.5 rounded-xl text-[9px] font-black border transition-all ${isBold ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>B</button>
-                  <button onClick={() => setIsAllCaps(c => !c)} className={`px-2.5 py-1.5 rounded-xl text-[9px] font-black border transition-all ${isAllCaps ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>AA</button>
+                  <button onClick={() => setIsBold(b => !b)} className={`px-3 py-2 rounded-xl text-[9px] font-black border transition-all ${isBold ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>Bold</button>
+                  <button onClick={() => setIsAllCaps(c => !c)} className={`px-3 py-2 rounded-xl text-[9px] font-black border transition-all ${isAllCaps ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'}`}>Caps</button>
                 </div>
 
-                {/* Font size slider + buttons */}
                 <div className="flex items-center gap-2">
                   <Settings2 className="w-3 h-3 text-zinc-600 shrink-0" />
-                  <button onClick={() => setPreviewFontSize(s => Math.max(20, s - 1))} className="w-6 h-6 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-sm font-black transition-colors shrink-0">−</button>
-                  <input type="range" min="20" max="200" value={previewFontSize} onChange={(e) => setPreviewFontSize(parseInt(e.target.value))} className="flex-1 h-1 bg-zinc-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
-                  <button onClick={() => setPreviewFontSize(s => Math.min(200, s + 1))} className="w-6 h-6 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-sm font-black transition-colors shrink-0">+</button>
-                  <span className="text-[10px] font-bold text-zinc-500 tabular-nums w-9 text-right">{previewFontSize}px</span>
+                  <button onClick={() => setPreviewFontSize(s => Math.max(20, s - 1))} className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-sm font-black transition-colors shrink-0">-</button>
+                  <input type="range" min="20" max="200" value={previewFontSize} onChange={(e) => setPreviewFontSize(parseInt(e.target.value))} className="flex-1 h-1.5 bg-zinc-800 rounded-full appearance-none accent-indigo-500 cursor-pointer" />
+                  <button onClick={() => setPreviewFontSize(s => Math.min(200, s + 1))} className="w-7 h-7 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-sm font-black transition-colors shrink-0">+</button>
+                  <span className="text-[10px] font-bold text-zinc-500 tabular-nums w-11 text-right">{previewFontSize}px</span>
                 </div>
+              </div>
             </div>
           </div>
         </Draggable>
@@ -350,9 +683,12 @@ export default function EasyWorshipController() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start w-full mx-auto">
         <div className="w-full">
           <EasyWorshipEditor
-            title={inputTitle} text={inputText}
-            onTitleChange={setInputTitle} onTextChange={setInputText}
-            onClearEditor={handleClearEditor} onSave={handleSaveText}
+            title={inputTitle}
+            text={inputText}
+            onTitleChange={setInputTitle}
+            onTextChange={setInputText}
+            onClearEditor={handleClearEditor}
+            onSave={handleSaveText}
           />
         </div>
 
@@ -360,18 +696,147 @@ export default function EasyWorshipController() {
           <EasyWorshipSlides
             slides={quickSlides}
             liveSlideIndex={liveSlideIndex}
-            isBlackout={liveText === ""}
-            onSlideClick={(text, idx) => { setLiveSlideIndex(idx); broadcastData(text, previewFontSize, bgType, fontFamily, videoUrl); }}
+            isBlackout={liveText === ''}
+            onSlideClick={(text, idx) => {
+              setLiveSlideIndex(idx);
+              broadcastData(text, previewFontSize, bgType, fontFamily, videoUrl);
+            }}
             onBlackoutToggle={handleBlackoutToggle}
             isOutputCleared={isOutputCleared}
           />
         </div>
       </div>
 
+      <div className="rounded-[3rem] border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/70 backdrop-blur-md p-8 shadow-xl">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-indigo-500 text-white rounded-2xl shadow-lg shadow-indigo-500/20">
+              <Film className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-black uppercase italic tracking-tight text-zinc-900 dark:text-zinc-100">Background Library</h2>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mt-1">Save fast, slow, and ambient motion backgrounds for one-click use</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60">
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Saved Backgrounds</p>
+              <p className="text-lg font-black text-zinc-900 dark:text-zinc-100">{videoBackgroundLibrary.length}</p>
+            </div>
+            <div className="px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60">
+              <p className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">Slow / Fast</p>
+              <p className="text-lg font-black text-zinc-900 dark:text-zinc-100">{slowBackgrounds.length} / {fastBackgrounds.length}</p>
+            </div>
+            <button onClick={handleSaveVideoBackground} className="flex items-center gap-2 px-5 py-4 bg-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl hover:bg-indigo-600 transition-all">
+              <Plus className="w-4 h-4" /> Save Current Video
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_0.9fr] gap-8">
+          <div className="space-y-5">
+            {videoBackgroundLibrary.length === 0 ? (
+              <div className="rounded-[2.5rem] border-2 border-dashed border-zinc-200 dark:border-zinc-800 px-8 py-14 text-center bg-zinc-50/70 dark:bg-zinc-950/40">
+                <Film className="w-12 h-12 mx-auto text-zinc-300 dark:text-zinc-700 mb-4" />
+                <p className="text-sm font-black uppercase tracking-[0.18em] text-zinc-500">No saved video backgrounds yet</p>
+                <p className="text-xs font-semibold text-zinc-400 mt-2">Switch to `video`, paste an `.mp4` URL, then save it here.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {videoBackgroundLibrary.map(background => {
+                  const isSelected = selectedVideoBackgroundId === background.id;
+                  return (
+                    <div key={background.id} className={`rounded-[2rem] border p-4 transition-all ${
+                      isSelected
+                        ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/20 shadow-xl shadow-indigo-500/10'
+                        : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40'
+                    }`}>
+                      <div className="aspect-video rounded-[1.4rem] overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-black relative mb-4">
+                        <video className="w-full h-full object-cover" src={background.url} muted loop playsInline preload="metadata" />
+                        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                          <span className="px-2 py-1 rounded-full bg-black/70 text-white text-[8px] font-black uppercase tracking-widest">{background.speed}</span>
+                          <span className="px-2 py-1 rounded-full bg-black/70 text-white text-[8px] font-black uppercase tracking-widest">{background.mood}</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-sm font-black text-zinc-900 dark:text-zinc-100">{background.name}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                            Saved {new Date(background.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => applyVideoBackground(background)} className="flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all">
+                            <Film className="w-4 h-4" /> Use Background
+                          </button>
+                          <button onClick={() => handleDeleteVideoBackground(background.id)} className="p-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 text-zinc-400 hover:text-red-500 hover:border-red-300 dark:hover:border-red-800 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-950/50 p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <Sparkles className="w-5 h-5 text-indigo-500" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">Quick Mix</p>
+                  <p className="text-sm font-black text-zinc-900 dark:text-zinc-100">Pick by service energy</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 gap-3">
+                <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Slow Worship</p>
+                  <p className="text-xl font-black text-zinc-900 dark:text-zinc-100 mt-1">{slowBackgrounds.length}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Best for prayer, soaking, altar call.</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Fast Praise</p>
+                  <p className="text-xl font-black text-zinc-900 dark:text-zinc-100 mt-1">{fastBackgrounds.length}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Best for openers and energetic songs.</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Ambient / Prayer</p>
+                  <p className="text-xl font-black text-zinc-900 dark:text-zinc-100 mt-1">{ambientBackgrounds.length}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Soft motion for reflective moments.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-950/50 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-3">AI Prompt Starters</p>
+              <div className="space-y-3">
+                <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-4 py-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500">Slow</p>
+                  <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 mt-1">soft golden light rays through haze, cinematic worship background, slow motion, seamless loop, 16:9</p>
+                </div>
+                <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-4 py-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500">Fast</p>
+                  <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 mt-1">energetic blue and gold light streaks, uplifting worship concert motion, seamless loop, 16:9</p>
+                </div>
+                <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-4 py-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500">Ambient</p>
+                  <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 mt-1">floating particles, dark blue atmosphere, soft cinematic movement, prayer background, seamless loop, 16:9</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <EasyWorshipArchives
         folders={archiveFolders}
         setFolders={setArchiveFolders}
-        onLoad={(item) => {
+        onLoad={item => {
           setInputTitle(item.title);
           setInputText(item.text);
           setLiveSlideIndex(null);

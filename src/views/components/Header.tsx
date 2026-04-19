@@ -24,7 +24,7 @@ interface HeaderProps {
   importingId?: string | null;
 }
 
-export const Header = ({ 
+export const Header = ({
   activeMenu, activeFolderId, inputValue, setInputValue, 
   onSubmit, setIsSidebarOpen, isFetching,
   searchMode, setSearchMode,

@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Play, PlayCircle, PauseCircle, 
   Trash2, ChevronDown, Languages, Search, GripVertical, Copy, Edit3, Check, Guitar, PlusCircle, CheckCircle2, Upload,
-  Music, CloudDownload, Printer, DownloadCloud
+  Music, CloudDownload, Printer, DownloadCloud, Square, CheckSquare
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'; 
 import { PlayingVisualizer } from './FolderList';
@@ -11,6 +11,7 @@ import Swal from 'sweetalert2';
 import axiosInstance from '../../plugin/axios';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { fetchSongResourcesSmart } from './songData';
 
 const Toast = Swal.mixin({
   toast: true,
@@ -47,30 +48,6 @@ const fetchWithProxy = async (targetUrl: string) => {
 };
 
 
-// --- AGGRESSIVE CLEANER ---
-const cleanUpSongData = (rawArtist: string, rawTitle: string) => {
-  let title = rawTitle;
-  let artist = rawArtist;
-
-  if (title.includes('|')) {
-    const parts = title.split('|');
-    title = parts[0];
-    artist = parts[1] || artist;
-  } else if (title.includes('-')) {
-    const parts = title.split('-');
-    artist = parts[0];
-    title = parts[1];
-  }
-
-  title = title.replace(/\([^)]*\)|\[[^\]]*\]/g, '');
-  artist = artist.replace(/\([^)]*\)|\[[^\]]*\]/g, '');
-
-  const junkRegex = /(Official|Music Video|Lyric Video|'|Lyrics|Wish 107.5 Bus|Music|TV|Live|Acoustic|Performance|HD|HQ|Audio|VEVO|Topic|Channel|in Melbourne|Cover|\bVideo\b)/gi;
-  title = title.replace(junkRegex, '').trim();
-  artist = artist.replace(junkRegex, '').trim();
-
-  return { cleanArtist: artist, cleanTitle: title };
-};
 
 const extractUGJson = (html: string) => {
   try {
@@ -200,6 +177,9 @@ const fetchChordsSmart = async (artist: string, title: string) => {
   } catch(e) {}
   return "";
 };
+
+void fetchLyricsSmart;
+void fetchChordsSmart;
 
 // --- HELPER PARA SA PLAIN TEXT LYRICS ---
 const getCleanLyricsText = (lyrics: string) => {
@@ -344,7 +324,7 @@ export default function SongList(props: any) {
     folders, setFolders, activeFolderId, setActiveFolderId, 
     currentSong, setCurrentSong, selectSong, setIsPlaying, isPlaying,
     inputValue, setInputValue, searchMode, setYoutubeResults,
-    isAutoPlayNextEnabled, setIsAutoPlayNextEnabled 
+    isAutoPlayNextEnabled, setIsAutoPlayNextEnabled, persistFoldersNow
   } = props;
 
   const [expandedSongId, setExpandedSongId] = useState<string | null>(null);
@@ -354,6 +334,7 @@ export default function SongList(props: any) {
   const[fetchingSongId, setFetchingSongId] = useState<string | null>(null);
   const [editingTitleId, setEditingTitleId] = useState<string | null>(null);
   const [tempTitle, setTempTitle] = useState<string>("");
+  const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
 
   const activeFolder = folders.find((f: PlaylistFolder) => f.id === activeFolderId);
 
@@ -371,9 +352,19 @@ export default function SongList(props: any) {
   const songsToDisplay = isLocalSearch 
     ? globalLibrary.filter((s: Song) => s.title.toLowerCase().includes(inputValue.toLowerCase()) || (s.artist && s.artist.toLowerCase().includes(inputValue.toLowerCase())))
     : (activeFolder?.songs || []);
+  const hasSelectedSongs = selectedSongIds.length > 0;
+  const areAllSongsSelected = !isLocalSearch && songsToDisplay.length > 0 && selectedSongIds.length === songsToDisplay.length;
+
+  useEffect(() => {
+    if (isLocalSearch) return;
+    const generatingSong = songsToDisplay.find((song: Song) => song.isGenerating);
+    if (generatingSong) {
+      setExpandedSongId(generatingSong.id);
+    }
+  }, [isLocalSearch, songsToDisplay]);
 
   const onDragEnd = (result: any) => {
-    if (!result.destination || isLocalSearch) return;
+    if (!result.destination || isLocalSearch || hasSelectedSongs) return;
     const sourceIndex = result.source.index;
     const destinationIndex = result.destination.index;
     if (sourceIndex === destinationIndex) return;
@@ -418,17 +409,88 @@ export default function SongList(props: any) {
     Toast.fire({ icon: 'success', title: 'Added to folder!' });
   };
 
+  const toggleSongSelection = (songId: string) => {
+    setSelectedSongIds((prev) => prev.includes(songId) ? prev.filter((id) => id !== songId) : [...prev, songId]);
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isLocalSearch) return;
+    setSelectedSongIds(areAllSongsSelected ? [] : songsToDisplay.map((song: Song) => song.id));
+  };
+
+  const clearSelection = () => {
+    setSelectedSongIds([]);
+  };
+
   const handleRemoveSong = async (song: Song) => {
     const result = await Swal.fire({
       title: 'Remove Song?', text: `Are you sure you want to remove "${song.title}" from this folder?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444', cancelButtonColor: '#71717a', confirmButtonText: 'Yes, remove it!'
     });
     if (result.isConfirmed) {
-      setFolders((prev: PlaylistFolder[]) => prev.map(f => f.id === activeFolderId ? { ...f, songs: f.songs.filter(s => s.id !== song.id) } : f));
+      const nextFolders = folders.map((folder: PlaylistFolder) =>
+        folder.id === activeFolderId
+          ? { ...folder, songs: folder.songs.filter((s) => s.id !== song.id) }
+          : folder
+      );
+
+      setFolders(nextFolders);
       if (currentSong?.id === song.id) {
         setCurrentSong(null);
         setIsPlaying(false);
       }
-      Toast.fire({ icon: 'success', title: 'Song removed' });
+
+      try {
+        await persistFoldersNow?.(nextFolders);
+        setSelectedSongIds((prev) => prev.filter((id) => id !== song.id));
+        Toast.fire({ icon: 'success', title: 'Song removed' });
+      } catch (_error) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Delete not saved',
+          text: 'The song was removed from the screen, but saving failed. Please try again.',
+        });
+      }
+    }
+  };
+
+  const handleBulkRemoveSongs = async () => {
+    if (!activeFolderId || selectedSongIds.length === 0) return;
+
+    const result = await Swal.fire({
+      title: 'Delete selected songs?',
+      text: `Remove ${selectedSongIds.length} song(s) from this folder?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#71717a',
+      confirmButtonText: 'Yes, delete them!',
+    });
+
+    if (!result.isConfirmed) return;
+
+    const selectedIds = new Set(selectedSongIds);
+    const nextFolders = folders.map((folder: PlaylistFolder) =>
+      folder.id === activeFolderId
+        ? { ...folder, songs: folder.songs.filter((song) => !selectedIds.has(song.id)) }
+        : folder
+    );
+
+    setFolders(nextFolders);
+    if (currentSong?.id && selectedIds.has(currentSong.id)) {
+      setCurrentSong(null);
+      setIsPlaying(false);
+    }
+
+    try {
+      await persistFoldersNow?.(nextFolders);
+      setSelectedSongIds([]);
+      Toast.fire({ icon: 'success', title: `${selectedIds.size} songs removed` });
+    } catch (_error) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Delete not saved',
+        text: 'The selected songs were removed from the screen, but saving failed. Please try again.',
+      });
     }
   };
 
@@ -527,7 +589,37 @@ export default function SongList(props: any) {
   };
 
   const handleManualFetch = async (song: Song) => {
-    const { cleanArtist, cleanTitle } = cleanUpSongData(song.artist || "", song.title);
+    const rawTitle = song.title || '';
+    const rawAuthor = song.artist || '';
+
+    const stripJunk = (s: string) =>
+      s.replace(/\([^)]*\)|\[[^\]]*\]/g, '')
+       .replace(/(Official|Music\s*Video|Lyric\s*Video|Lyrics|HD|HQ|Audio|VEVO|Topic|Channel|Cover|\bVideo\b|Wish\s*107\.5)/gi, '')
+       .trim();
+
+    // Smart artist/title detection using the YouTube author as a hint
+    let guessedTitle = stripJunk(rawTitle);
+    let guessedArtist = stripJunk(rawAuthor.replace(/(VEVO|Topic|Official|Channel)/gi, '').trim());
+
+    const sepMatch = rawTitle.match(/^(.+?)\s*(?:\s-\s|\s\|\s)\s*(.+)$/);
+    if (sepMatch) {
+      const part0 = stripJunk(sepMatch[1]);
+      const part1 = stripJunk(sepMatch[2]);
+      const authorKey = guessedArtist.toLowerCase().slice(0, 5);
+
+      if (authorKey && part1.toLowerCase().includes(authorKey)) {
+        guessedTitle = part0;
+        guessedArtist = part1;
+      } else if (authorKey && part0.toLowerCase().includes(authorKey)) {
+        guessedArtist = part0;
+        guessedTitle = part1;
+      } else {
+        // No clear match — prefer "Title - Artist" (most common YouTube format)
+        guessedTitle = part0;
+        guessedArtist = guessedArtist || part1;
+      }
+    }
+
     const { value: formValues } = await Swal.fire({
       title: '<span style="font-weight: 900; color: #4f46e5; display: flex; align-items: center; justify-content: center; gap: 8px;"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg> Get Data Online</span>',
       html: `
@@ -535,28 +627,40 @@ export default function SongList(props: any) {
           <p style="font-size: 13px; color: #71717a; margin-bottom: 20px; font-weight: 500; text-align: center;">Make sure the artist and song title are clean to get the most accurate lyrics and chords.</p>
           <div style="margin-bottom: 16px;">
             <label style="display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #4f46e5; margin-bottom: 6px;">Artist Name</label>
-            <input id="swal-artist" class="swal2-input" style="width: 100%; margin: 0; box-sizing: border-box; border-radius: 12px; background: #f4f4f5; border: 1px solid #e4e4e7; color: #3f3f46; font-weight: 600;" placeholder="e.g. Hillsong Worship" value="${cleanArtist.replace(/"/g, '&quot;')}">
+            <input id="swal-artist" class="swal2-input" style="width: 100%; margin: 0; box-sizing: border-box; border-radius: 12px; background: #f4f4f5; border: 1px solid #e4e4e7; color: #3f3f46; font-weight: 600;" placeholder="e.g. Hillsong Worship" value="${guessedArtist.replace(/"/g, '&quot;')}">
           </div>
           <div>
             <label style="display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #4f46e5; margin-bottom: 6px;">Song Title</label>
-            <input id="swal-title" class="swal2-input" style="width: 100%; margin: 0; box-sizing: border-box; border-radius: 12px; background: #f4f4f5; border: 1px solid #e4e4e7; color: #3f3f46; font-weight: 600;" placeholder="e.g. What a Beautiful Name" value="${cleanTitle.replace(/"/g, '&quot;')}">
+            <input id="swal-title" class="swal2-input" style="width: 100%; margin: 0; box-sizing: border-box; border-radius: 12px; background: #f4f4f5; border: 1px solid #e4e4e7; color: #3f3f46; font-weight: 600;" placeholder="e.g. What a Beautiful Name" value="${guessedTitle.replace(/"/g, '&quot;')}">
           </div>
+          <button id="swal-swap-btn" type="button" style="margin-top: 14px; width: 100%; padding: 10px; background: #f4f4f5; border: 1.5px dashed #a1a1aa; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #71717a; transition: all 0.2s;">⇄ Swap Artist &amp; Title</button>
         </div>
       `,
-      focusConfirm: false, showCancelButton: true, confirmButtonText: '<span style="font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Search Online</span>', cancelButtonText: '<span style="font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Cancel</span>', confirmButtonColor: '#4f46e5', cancelButtonColor: '#a1a1aa', customClass: { popup: 'rounded-3xl' },
-      preConfirm: () => [ (document.getElementById('swal-artist') as HTMLInputElement).value, (document.getElementById('swal-title') as HTMLInputElement).value ]
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: '<span style="font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Search Online</span>',
+      cancelButtonText: '<span style="font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Cancel</span>',
+      confirmButtonColor: '#4f46e5',
+      cancelButtonColor: '#a1a1aa',
+      customClass: { popup: 'rounded-3xl' },
+      didOpen: () => {
+        document.getElementById('swal-swap-btn')?.addEventListener('click', () => {
+          const artistEl = document.getElementById('swal-artist') as HTMLInputElement;
+          const titleEl = document.getElementById('swal-title') as HTMLInputElement;
+          [artistEl.value, titleEl.value] = [titleEl.value, artistEl.value];
+        });
+      },
+      preConfirm: () => [
+        (document.getElementById('swal-artist') as HTMLInputElement).value,
+        (document.getElementById('swal-title') as HTMLInputElement).value,
+      ],
     });
 
     if (!formValues) return;
     const [artist, title] = formValues;
 
     setFetchingSongId(song.id);
-    const [lyricsResult, chordsResult] = await Promise.all([ fetchLyricsSmart(artist, title), fetchChordsSmart(artist, title) ]);
-
-    let finalLyrics = lyricsResult;
-    if (chordsResult && (!lyricsResult || chordsResult.length > lyricsResult.length + 50)) {
-        finalLyrics = getCleanLyricsText(chordsResult);
-    }
+    const { lyrics: finalLyrics, chords: chordsResult } = await fetchSongResourcesSmart(artist, title);
 
     setFolders((prev: PlaylistFolder[]) => prev.map(folder => {
       if (folder.id === activeFolderId) {
@@ -627,6 +731,40 @@ export default function SongList(props: any) {
              <span className="text-[10px] font-bold uppercase tracking-wider">Upload MP3</span>
              <input type="file" accept="audio/*" className="hidden" onChange={handleFileUpload} />
            </label>
+
+           {!isLocalSearch && songsToDisplay.length > 0 && (
+             <>
+               <button
+                 onClick={handleToggleSelectAll}
+                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border shadow-sm transition-all active:scale-95 whitespace-nowrap ${
+                   areAllSongsSelected
+                     ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30'
+                     : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:border-indigo-400 hover:text-indigo-600'
+                 }`}
+               >
+                 {areAllSongsSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                 <span className="text-[10px] font-bold uppercase tracking-wider">Check All</span>
+               </button>
+
+               {hasSelectedSongs && (
+                 <>
+                   <button
+                     onClick={clearSelection}
+                     className="px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 shadow-sm transition-all active:scale-95 whitespace-nowrap"
+                   >
+                     <span className="text-[10px] font-bold uppercase tracking-wider">Clear</span>
+                   </button>
+                   <button
+                     onClick={handleBulkRemoveSongs}
+                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500 text-white hover:bg-red-600 shadow-sm transition-all active:scale-95 whitespace-nowrap"
+                   >
+                     <Trash2 className="w-4 h-4" />
+                     <span className="text-[10px] font-bold uppercase tracking-wider">Delete Selected ({selectedSongIds.length})</span>
+                   </button>
+                 </>
+               )}
+             </>
+           )}
            
            {!isLocalSearch && (
              <div className="flex items-center justify-between gap-4 bg-white dark:bg-zinc-900 px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm whitespace-nowrap shrink-0">
@@ -662,15 +800,16 @@ export default function SongList(props: any) {
                     const isCurrentlyPlaying = currentSong?.id === song.id;
                     const alreadyInFolder = activeFolder?.songs.some((s: Song) => s.url === song.url);
                     const isMp3 = !song.url.includes('youtube');
-                    const isFetchingData = fetchingSongId === song.id;
+                    const isFetchingData = fetchingSongId === song.id || song.isGenerating;
                     const isExpanded = expandedSongId === song.id;
+                    const isSelected = selectedSongIds.includes(song.id);
 
                     return (
-                      <Draggable key={song.id} draggableId={song.id} index={index} isDragDisabled={isLocalSearch}>
+                      <Draggable key={song.id} draggableId={song.id} index={index} isDragDisabled={isLocalSearch || hasSelectedSongs}>
                         {(provided, snapshot) => (
                           <div ref={provided.innerRef} {...provided.draggableProps} style={{...provided.draggableProps.style, left: "auto", top: "auto" }} 
                             className={`group overflow-hidden transition-all duration-300 rounded-[1.5rem] bg-white dark:bg-zinc-900/80 backdrop-blur-xl border
-                            ${snapshot.isDragging ? 'shadow-2xl border-indigo-500 scale-[1.02] z-50' : isExpanded ? 'border-indigo-500/50 shadow-xl shadow-indigo-500/10' : 'border-zinc-200/50 dark:border-white/5 shadow-sm hover:border-indigo-400/50 dark:hover:border-indigo-500/30'}`}>
+                            ${snapshot.isDragging ? 'shadow-2xl border-indigo-500 scale-[1.02] z-50' : isSelected ? 'border-red-300 dark:border-red-500/40 shadow-xl shadow-red-500/10' : isExpanded ? 'border-indigo-500/50 shadow-xl shadow-indigo-500/10' : 'border-zinc-200/50 dark:border-white/5 shadow-sm hover:border-indigo-400/50 dark:hover:border-indigo-500/30'}`}>
                             
                             {/* CARD HEADER */}
                             <div className="flex items-center justify-between p-4 md:p-5 relative bg-white dark:bg-transparent rounded-t-[1.5rem]">
@@ -682,6 +821,20 @@ export default function SongList(props: any) {
                               )}
 
                               <div className="flex items-center gap-4 min-w-0 flex-1">
+                                {!isLocalSearch && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); toggleSongSelection(song.id); }}
+                                    className={`shrink-0 p-1.5 rounded-lg border transition-all active:scale-95 ${
+                                      isSelected
+                                        ? 'bg-red-50 dark:bg-red-500/10 text-red-500 border-red-200 dark:border-red-500/30'
+                                        : 'bg-white dark:bg-zinc-900 text-zinc-300 dark:text-zinc-600 border-zinc-200 dark:border-zinc-700 hover:border-red-300 hover:text-red-500'
+                                    }`}
+                                    title={isSelected ? 'Uncheck song' : 'Check song'}
+                                  >
+                                    {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                                  </button>
+                                )}
                                 {!isLocalSearch && <div {...provided.dragHandleProps} className="hidden sm:flex text-zinc-300 hover:text-zinc-500 cursor-grab active:cursor-grabbing px-1"><GripVertical className="w-5 h-5" /></div>}
                                 <div className="flex items-center gap-4 min-w-0 group/info flex-1">
                                   
@@ -788,7 +941,7 @@ export default function SongList(props: any) {
                                         {!isLocalSearch && (
                                           <>
                                             <button disabled={isFetchingData} onClick={() => handleManualFetch(song)} className={`flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-xl text-indigo-700 dark:text-indigo-400 font-bold text-[10px] uppercase tracking-wider shadow-sm transition-all ${isFetchingData ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:bg-indigo-100 dark:hover:bg-indigo-500/20 active:scale-95'}`}>
-                                              <CloudDownload className={`w-4 h-4 ${isFetchingData ? 'animate-bounce' : ''}`} /> Try to Generate
+                                              <CloudDownload className={`w-4 h-4 ${isFetchingData ? 'animate-bounce' : ''}`} /> Generate Lyrics + Chords
                                             </button>
                                             <button 
                                               disabled={isFetchingData} 

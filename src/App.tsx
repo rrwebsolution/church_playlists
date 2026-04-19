@@ -10,6 +10,7 @@ import axiosInstance from './plugin/axios';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import Draggable from 'react-draggable';
+import { fetchSongResourcesSmart } from './views/playlist/songData';
 
 declare global {
   interface Window {
@@ -301,6 +302,21 @@ export default function App() {
     } catch (err) { setIsDataLoaded(true); }
   }, []);
 
+  const persistFoldersNow = useCallback(async (nextFolders: PlaylistFolder[]) => {
+    const currentDataString = JSON.stringify(nextFolders);
+
+    isSavingRef.current = true;
+    try {
+      await axiosInstance.post('playlists/sync', nextFolders);
+      lastSavedData.current = currentDataString;
+    } catch (error) {
+      await fetchDatabase();
+      throw error;
+    } finally {
+      isSavingRef.current = false;
+    }
+  }, [fetchDatabase]);
+
   useEffect(() => { fetchDatabase(); }, [fetchDatabase]);
 
   useEffect(() => {
@@ -323,6 +339,37 @@ export default function App() {
     return () => clearTimeout(saveTimer);
   }, [folders, isDataLoaded, fetchDatabase]);
 
+  const buildImportedSong = async (baseSong: Song) => {
+    const { lyrics, chords } = await fetchSongResourcesSmart(baseSong.artist || '', baseSong.title);
+
+    return {
+      ...baseSong,
+      lyrics,
+      chords,
+      isGenerating: false,
+    };
+  };
+
+  const insertImportedSong = useCallback((song: Song) => {
+    setFolders(prev => {
+      if (activeFolderId) return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, song] } : f);
+      const defaultIndex = prev.findIndex(f => f.name === "Saved Library" || f.name === "Uncategorized");
+      if (defaultIndex !== -1) {
+        const updated = [...prev];
+        updated[defaultIndex].songs.push(song);
+        return updated;
+      }
+      return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [song] }];
+    });
+  }, [activeFolderId]);
+
+  const replaceImportedSong = useCallback((songId: string, nextSong: Song) => {
+    setFolders(prev => prev.map(folder => ({
+      ...folder,
+      songs: folder.songs.map(song => song.id === songId ? nextSong : song),
+    })));
+  }, []);
+
   const handleImportYT = async (yt: any) => {
     let existingFolder = null;
     const isDuplicateGlobally = folders.some(folder => {
@@ -340,19 +387,25 @@ export default function App() {
     if (!confirmImport.isConfirmed) return;
 
     setImportingId(yt.videoId);
-    const newSong: Song = { id: Date.now().toString(), title: yt.title, artist: yt.author, url: yt.url, lyrics: "", chords: "" };
-
-    setFolders(prev => {
-      if (activeFolderId) return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, newSong] } : f);
-      const defaultIndex = prev.findIndex(f => f.name === "Saved Library" || f.name === "Uncategorized");
-      if (defaultIndex !== -1) { const updated = [...prev]; updated[defaultIndex].songs.push(newSong); return updated; } 
-      else return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
-    });
-    
-    setImportingId(null);
-    setYoutubeResults([]); 
-    setInputValue('');
-    Toast.fire({ icon: 'success', title: 'Imported successfully!' });
+    try {
+      const pendingSong: Song = { id: Date.now().toString(), title: yt.title, artist: yt.author, url: yt.url, lyrics: '', chords: '', isGenerating: true };
+      insertImportedSong(pendingSong);
+      setYoutubeResults([]);
+      setInputValue('');
+      try {
+        const newSong = await buildImportedSong(pendingSong);
+        replaceImportedSong(pendingSong.id, newSong);
+        Toast.fire({
+          icon: newSong.lyrics || newSong.chords ? 'success' : 'info',
+          title: newSong.lyrics || newSong.chords ? 'Imported with auto-generated data!' : 'Imported, but no lyrics found online.',
+        });
+      } catch (_error) {
+        replaceImportedSong(pendingSong.id, { ...pendingSong, isGenerating: false });
+        Toast.fire({ icon: 'warning', title: 'Imported, but generation failed.' });
+      }
+    } finally {
+      setImportingId(null);
+    }
   };
 
   const handleHeaderSubmit = async (e: React.FormEvent) => {
@@ -377,13 +430,20 @@ export default function App() {
               setIsFetching(false); return; 
           }
           const ytRes = await axios.get(`https://noembed.com/embed?url=${targetUrl}`);
-          const newSong: Song = { id: Date.now().toString(), title: ytRes.data.title, artist: ytRes.data.author_name, url: targetUrl, lyrics: "", chords: "" };
-          setFolders(prev => {
-            if (activeFolderId) return prev.map(f => f.id === activeFolderId ? { ...f, songs: [...f.songs, newSong] } : f);
-            return [...prev, { id: Date.now().toString(), name: "Saved Library", songs: [newSong] }];
-          });
+          const pendingSong: Song = { id: Date.now().toString(), title: ytRes.data.title, artist: ytRes.data.author_name, url: targetUrl, lyrics: '', chords: '', isGenerating: true };
+          insertImportedSong(pendingSong);
           setInputValue('');
-          Toast.fire({ icon: 'success', title: 'Added!' });
+          try {
+            const newSong = await buildImportedSong(pendingSong);
+            replaceImportedSong(pendingSong.id, newSong);
+            Toast.fire({
+              icon: newSong.lyrics || newSong.chords ? 'success' : 'info',
+              title: newSong.lyrics || newSong.chords ? 'Added with auto-generated data!' : 'Added, but no lyrics found online.',
+            });
+          } catch (_error) {
+            replaceImportedSong(pendingSong.id, { ...pendingSong, isGenerating: false });
+            Toast.fire({ icon: 'warning', title: 'Added, but generation failed.' });
+          }
         }
       } catch (err) {} finally { setIsFetching(false); }
     }
@@ -463,11 +523,12 @@ export default function App() {
             <Outlet 
               context={{ 
                 folders, setFolders, activeFolderId, setActiveFolderId, activeFolder, 
-                currentSong, setCurrentSong, selectSong: handleSelectSong, setIsPlaying: handleTogglePlay, isPlaying, 
-                isAutoPlayNextEnabled, setIsAutoPlayNextEnabled, inputValue, setInputValue, 
-                searchMode, setSearchMode, playHistory, setPlayHistory, ytPlayer, handleClearHistory,
-                // IDUGANG ANG PPT STATES SA CONTEXT
-                presentations, setPresentations
+              currentSong, setCurrentSong, selectSong: handleSelectSong, setIsPlaying: handleTogglePlay, isPlaying, 
+              isAutoPlayNextEnabled, setIsAutoPlayNextEnabled, inputValue, setInputValue, 
+              searchMode, setSearchMode, playHistory, setPlayHistory, ytPlayer, handleClearHistory,
+              persistFoldersNow,
+              // IDUGANG ANG PPT STATES SA CONTEXT
+              presentations, setPresentations
               }} 
             />
           </div>

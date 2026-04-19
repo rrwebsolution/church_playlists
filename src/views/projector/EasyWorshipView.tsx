@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 type BackgroundType = 'none' | 'praise' | 'worship' | 'green' | 'video';
 
-const API_URL = (import.meta.env.VITE_URL || 'http://localhost:3000') + '/api/obs-state';
+const API_URL = (import.meta.env.VITE_URL || 'http://localhost/jamctagoloan-backend/public') + '/api/obs-state';
 
 export default function EasyWorshipView() {
   const [lyrics, setLyrics] = useState("");

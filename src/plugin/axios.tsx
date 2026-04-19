@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // Kuhaon nato ang URL sa .env.
-const apiUrl = import.meta.env.VITE_URL || 'http://localhost:8000';
+const apiUrl = import.meta.env.VITE_URL || 'http://localhost/jamctagoloan-backend/public';
 
 // Maghimo tag "Map" para i-track ang mga nagdagan nga requests
 const pendingRequests = new Map();

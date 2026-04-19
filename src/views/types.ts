@@ -8,6 +8,7 @@ export interface Song {
   lyrics?: string;
   chords?: string;
   offset?: number;
+  isGenerating?: boolean;
 }
 
 export interface PlaylistFolder {

@@ -162,6 +162,8 @@ export default function EasyWorshipController() {
   const obsBroadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const lastObsPayloadRef = useRef<string>('');
   const pendingObsPayloadRef = useRef<string>('');
+  const monitorFrameRef = useRef<HTMLDivElement | null>(null);
+  const [monitorScale, setMonitorScale] = useState(0.25);
 
   const [currentArchiveId, setCurrentArchiveId] = useState<string | null>(null);
   const projectorWindowRef = useRef<Window | null>(null);
@@ -333,6 +335,35 @@ export default function EasyWorshipController() {
       obsBroadcastChannelRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const frame = monitorFrameRef.current;
+    if (!frame || typeof ResizeObserver === 'undefined') return;
+
+    const DESIGN_WIDTH = 1920;
+    const DESIGN_HEIGHT = 1080;
+
+    const updateScale = () => {
+      const nextScale = Math.min(
+        frame.clientWidth / DESIGN_WIDTH,
+        frame.clientHeight / DESIGN_HEIGHT
+      );
+
+      setMonitorScale(nextScale > 0 ? nextScale : 0.25);
+    };
+
+    updateScale();
+
+    const observer = new ResizeObserver(() => {
+      updateScale();
+    });
+
+    observer.observe(frame);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [showMonitor]);
 
   useEffect(() => {
     return () => {
@@ -897,27 +928,38 @@ export default function EasyWorshipController() {
               </button>
             </div>
 
-            <div className={`aspect-video w-full rounded-2xl flex items-center justify-center p-6 border border-zinc-900 overflow-hidden relative transition-all duration-1000 group/monitor ${bgType === 'praise' ? 'bg-indigo-900 animate-pulse' : bgType === 'worship' ? 'bg-zinc-950' : bgType === 'green' ? 'bg-[#00FF00]' : 'bg-black'}`}>
-              {bgType === 'video' && videoUrl && (
-                <video key={videoUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover rounded-2xl" src={videoUrl} />
-              )}
-              <p
-                className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10"
+            <div ref={monitorFrameRef} className={`aspect-video w-full rounded-2xl border border-zinc-900 overflow-hidden relative transition-all duration-1000 group/monitor ${bgType === 'praise' ? 'bg-indigo-900 animate-pulse' : bgType === 'worship' ? 'bg-zinc-950' : bgType === 'green' ? 'bg-[#00FF00]' : 'bg-black'}`}>
+              <div
+                className="absolute left-1/2 top-1/2 origin-center"
                 style={{
-                  fontSize: `${previewFontSize * 0.25}px`,
-                  fontFamily,
-                  fontWeight: isBold ? 'bold' : 'normal',
-                  textTransform: isAllCaps ? 'uppercase' : 'none',
-                  WebkitTextStroke: '0.5px #000',
-                  textShadow: '0 2px 10px rgba(0,0,0,0.5)'
+                  width: '1920px',
+                  height: '1080px',
+                  transform: `translate(-50%, -50%) scale(${monitorScale})`,
                 }}
               >
-                {liveText || (
-                  <span className="text-white/10 italic text-[10px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset', textTransform: 'none' }}>
-                    CLEARED
-                  </span>
+                {bgType === 'video' && videoUrl && (
+                  <video key={videoUrl} autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover" src={videoUrl} />
                 )}
-              </p>
+                <div className="absolute inset-0 flex items-center justify-center p-24">
+                  <p
+                    className="text-white text-center leading-tight whitespace-pre-wrap select-none relative z-10 w-full"
+                    style={{
+                      fontSize: `${previewFontSize}px`,
+                      fontFamily,
+                      fontWeight: isBold ? 'bold' : 'normal',
+                      textTransform: isAllCaps ? 'uppercase' : 'none',
+                      WebkitTextStroke: '2px #000',
+                      textShadow: '0 8px 40px rgba(0,0,0,0.85)'
+                    }}
+                  >
+                    {liveText || (
+                      <span className="text-white/10 italic text-[42px] tracking-[0.4em]" style={{ fontWeight: 'normal', WebkitTextStroke: 'unset', textTransform: 'none' }}>
+                        CLEARED
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
 
               <div className="absolute inset-0 z-20 rounded-2xl bg-black/85 backdrop-blur-sm opacity-0 group-hover/monitor:opacity-100 transition-opacity duration-200 flex flex-col gap-2 p-4 overflow-y-auto pointer-events-none">
                 <p className="text-[8px] font-black uppercase tracking-widest text-indigo-400 mb-1">Projector Output</p>

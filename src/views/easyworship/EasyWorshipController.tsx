@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, type ChangeEvent } from 'react';
 import { Presentation, Settings2, GripHorizontal, X, MonitorPlay, Type, Monitor, Activity, Clapperboard, Radio, AlertTriangle, Film, Plus, Sparkles, Trash2, LoaderCircle } from 'lucide-react';
+import axios from 'axios';
 import Swal from 'sweetalert2';
 import Draggable from 'react-draggable';
 import instance from '../../plugin/axios';
@@ -35,6 +36,20 @@ const OBS_STATE_API_URL = isLocalObsHost
   : (import.meta.env.VITE_OBS_STATE_URL || '/api/obs-state');
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
 const BACKEND_BASE_URL = (import.meta.env.VITE_URL || window.location.origin).replace(/\/+$/, '');
+const DEFAULT_MAX_BACKGROUND_VIDEO_MB = 25;
+const parsedMaxBackgroundVideoMb = Number(import.meta.env.VITE_BACKGROUND_VIDEO_MAX_MB);
+const MAX_BACKGROUND_VIDEO_MB = Number.isFinite(parsedMaxBackgroundVideoMb) && parsedMaxBackgroundVideoMb > 0
+  ? parsedMaxBackgroundVideoMb
+  : DEFAULT_MAX_BACKGROUND_VIDEO_MB;
+const MAX_BACKGROUND_VIDEO_BYTES = MAX_BACKGROUND_VIDEO_MB * 1024 * 1024;
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
+};
 
 const resolveBackgroundVideoUrl = (url?: string | null, storagePath?: string | null) => {
   if (storagePath) {
@@ -644,6 +659,22 @@ export default function EasyWorshipController() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (file.size > MAX_BACKGROUND_VIDEO_BYTES) {
+      setUploadedVideoFile(null);
+      setUploadedVideoStoragePath(null);
+      setActiveVideoBlobKey(null);
+      setVideoInputMode('upload');
+      setBgType('video');
+      setSelectedVideoBackgroundId(null);
+      setVideoUrl('');
+      Toast.fire({
+        icon: 'warning',
+        title: `Video is too large (${formatFileSize(file.size)}). Limit: ${MAX_BACKGROUND_VIDEO_MB} MB`
+      });
+      event.target.value = '';
+      return;
+    }
+
     if (draftUploadObjectUrlRef.current) {
       URL.revokeObjectURL(draftUploadObjectUrlRef.current);
     }
@@ -682,7 +713,10 @@ export default function EasyWorshipController() {
       setVideoUrl('');
       setUploadedVideoStoragePath(null);
       setUploadedVideoFile(null);
-      Toast.fire({ icon: 'error', title: 'Video upload failed' });
+      const errorTitle = axios.isAxiosError(error) && error.response?.status === 413
+        ? `Upload rejected. Server limit is smaller than ${formatFileSize(file.size)}`
+        : 'Video upload failed';
+      Toast.fire({ icon: 'error', title: errorTitle });
     } finally {
       setIsUploadingVideo(false);
       event.target.value = '';
@@ -1146,7 +1180,7 @@ export default function EasyWorshipController() {
                             'Choose MP4 / WebM / OGG file'
                           )}
                         </button>
-                        <p className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">Upload sends the file to your Laravel backend for OBS-safe playback.</p>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">Upload sends the file to your Laravel backend for OBS-safe playback. Max: {MAX_BACKGROUND_VIDEO_MB} MB.</p>
                       </>
                     )}
                     <div className="flex items-center gap-2">

@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { Presentation, Settings2, GripHorizontal, X, MonitorPlay, Type, Monitor, Activity, Clapperboard, Radio, AlertTriangle, Film, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef, type ChangeEvent } from 'react';
+import { Presentation, Settings2, GripHorizontal, X, MonitorPlay, Type, Monitor, Activity, Clapperboard, Radio, AlertTriangle, Film, Plus, Sparkles, Trash2, LoaderCircle } from 'lucide-react';
 import Swal from 'sweetalert2';
 import Draggable from 'react-draggable';
 import instance from '../../plugin/axios';
@@ -16,6 +16,39 @@ const Toast = Swal.mixin({
   timerProgressBar: true,
   customClass: { container: 'z-[99999]' }
 });
+
+const isPrivateNetworkHost = (hostname: string) =>
+  hostname === 'localhost' ||
+  hostname === '127.0.0.1' ||
+  hostname === '0.0.0.0' ||
+  hostname.endsWith('.local') ||
+  /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+  /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+  /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+
+const isLocalObsHost =
+  typeof window !== 'undefined' &&
+  isPrivateNetworkHost(window.location.hostname);
+
+const OBS_STATE_API_URL = isLocalObsHost
+  ? '/api/obs-state'
+  : (import.meta.env.VITE_OBS_STATE_URL || '/api/obs-state');
+const OBS_STATE_CHANNEL = 'jamc-obs-state';
+const BACKEND_BASE_URL = (import.meta.env.VITE_URL || window.location.origin).replace(/\/+$/, '');
+
+const resolveBackgroundVideoUrl = (url?: string | null, storagePath?: string | null) => {
+  if (storagePath) {
+    return `${BACKEND_BASE_URL}/storage/${storagePath.replace(/^\/+/, '')}`;
+  }
+
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url) || url.startsWith('blob:')) return url;
+  if (url.startsWith('/storage/')) {
+    return `${BACKEND_BASE_URL}${url}`;
+  }
+
+  return url;
+};
 
 const FONTS = [
   { label: 'Arial', value: 'Arial, sans-serif' },
@@ -39,9 +72,22 @@ export interface ArchiveFolder {
   items: SavedItem[];
 }
 
+interface ObsStatePayload {
+  text: string;
+  fontSize: number;
+  background: string;
+  fontFamily: string;
+  videoUrl: string;
+  uploadedVideoKey: string | null;
+  bold: boolean;
+  allCaps: boolean;
+  updatedAt: number;
+}
+
 type BackgroundType = 'none' | 'praise' | 'worship' | 'green' | 'video';
 type BackgroundSpeed = 'slow' | 'medium' | 'fast';
 type BackgroundMood = 'worship' | 'praise' | 'ambient' | 'prayer';
+type VideoInputMode = 'link' | 'upload';
 
 interface VideoBackgroundItem {
   id: string;
@@ -50,7 +96,40 @@ interface VideoBackgroundItem {
   speed: BackgroundSpeed;
   mood: BackgroundMood;
   createdAt: number;
+  sourceType: VideoInputMode;
+  blobKey?: string;
+  storagePath?: string;
 }
+
+const VIDEO_LIBRARY_DB = 'ew-video-library';
+const VIDEO_LIBRARY_STORE = 'videos';
+
+const openVideoLibraryDb = (): Promise<IDBDatabase> =>
+  new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(VIDEO_LIBRARY_DB, 1);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(VIDEO_LIBRARY_STORE)) {
+        db.createObjectStore(VIDEO_LIBRARY_STORE);
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+
+const getVideoBlob = async (key: string): Promise<Blob | null> => {
+  const db = await openVideoLibraryDb();
+  const blob = await new Promise<Blob | null>((resolve, reject) => {
+    const tx = db.transaction(VIDEO_LIBRARY_STORE, 'readonly');
+    const request = tx.objectStore(VIDEO_LIBRARY_STORE).get(key);
+    request.onsuccess = () => resolve((request.result as Blob | undefined) || null);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return blob;
+};
 
 export default function EasyWorshipController() {
   const [inputTitle, setInputTitle] = useState(() => localStorage.getItem('ew_draft_title') || '');
@@ -67,15 +146,27 @@ export default function EasyWorshipController() {
   const [isAllCaps, setIsAllCaps] = useState(() => localStorage.getItem('ew_allcaps') !== 'false');
   const [bgType, setBgType] = useState<BackgroundType>('green');
   const [videoUrl, setVideoUrl] = useState(() => localStorage.getItem('ew_video_url') || '');
+  const [videoInputMode, setVideoInputMode] = useState<VideoInputMode>('link');
   const [selectedVideoBackgroundId, setSelectedVideoBackgroundId] = useState<string | null>(() => localStorage.getItem('ew_selected_video_bg_id'));
+  const [activeVideoBlobKey, setActiveVideoBlobKey] = useState<string | null>(null);
   const [showMonitor, setShowMonitor] = useState(true);
   const [liveSlideIndex, setLiveSlideIndex] = useState<number | null>(null);
   const [isProjectorOpen, setIsProjectorOpen] = useState(false);
   const [lastBroadcastAt, setLastBroadcastAt] = useState<number | null>(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const nodeRef = useRef(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const draftUploadObjectUrlRef = useRef<string | null>(null);
+  const persistedObjectUrlsRef = useRef<string[]>([]);
+  const obsBroadcastTimerRef = useRef<number | null>(null);
+  const obsBroadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const lastObsPayloadRef = useRef<string>('');
+  const pendingObsPayloadRef = useRef<string>('');
 
   const [currentArchiveId, setCurrentArchiveId] = useState<string | null>(null);
   const projectorWindowRef = useRef<Window | null>(null);
+  const [uploadedVideoFile, setUploadedVideoFile] = useState<File | null>(null);
+  const [uploadedVideoStoragePath, setUploadedVideoStoragePath] = useState<string | null>(null);
 
   const handleOpenProjector = () => {
     if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
@@ -164,6 +255,54 @@ export default function EasyWorshipController() {
   }, [selectedVideoBackgroundId]);
 
   useEffect(() => {
+    let active = true;
+
+    const hydrateUploadedVideos = async () => {
+      const raw = localStorage.getItem('jamc_ew_video_library');
+      if (!raw) return;
+
+      try {
+        const parsed = JSON.parse(raw) as VideoBackgroundItem[];
+        const hydrated = await Promise.all(
+          parsed.map(async item => {
+            if (item.sourceType !== 'upload' || !item.blobKey) return item;
+
+            const blob = await getVideoBlob(item.blobKey);
+            if (!blob) return null;
+
+            const objectUrl = URL.createObjectURL(blob);
+            persistedObjectUrlsRef.current.push(objectUrl);
+            return { ...item, url: objectUrl };
+          })
+        );
+
+        if (active) {
+          setVideoBackgroundLibrary(
+            hydrated
+              .filter((item): item is VideoBackgroundItem => item !== null)
+              .map(item => ({
+                ...item,
+                url: item.sourceType === 'upload'
+                  ? resolveBackgroundVideoUrl(item.url, item.storagePath)
+                  : item.url,
+              }))
+          );
+        }
+      } catch {
+        // Keep the current library state if hydration fails.
+      }
+    };
+
+    hydrateUploadedVideos();
+
+    return () => {
+      active = false;
+      persistedObjectUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      persistedObjectUrlsRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
     const interval = window.setInterval(() => {
       const isOpen = !!projectorWindowRef.current && !projectorWindowRef.current.closed;
       setIsProjectorOpen(isOpen);
@@ -173,7 +312,36 @@ export default function EasyWorshipController() {
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (draftUploadObjectUrlRef.current) {
+        URL.revokeObjectURL(draftUploadObjectUrlRef.current);
+      }
+    };
+  }, []);
+
   const isOutputCleared = liveText === '';
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+
+    const channel = new BroadcastChannel(OBS_STATE_CHANNEL);
+    obsBroadcastChannelRef.current = channel;
+
+    return () => {
+      channel.close();
+      obsBroadcastChannelRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (obsBroadcastTimerRef.current !== null) {
+        window.clearTimeout(obsBroadcastTimerRef.current);
+      }
+      pendingObsPayloadRef.current = '';
+    };
+  }, []);
 
   const broadcastData = async (
     text: string,
@@ -186,14 +354,62 @@ export default function EasyWorshipController() {
   ) => {
     setLiveText(text);
     setLastBroadcastAt(Date.now());
-    const data = { text, fontSize: size, background: bg, fontFamily: font, videoUrl: vidUrl, bold, allCaps, updatedAt: Date.now() };
+    const data: ObsStatePayload = {
+      text,
+      fontSize: size,
+      background: bg,
+      fontFamily: font,
+      videoUrl: bg === 'video' && activeVideoBlobKey ? '' : vidUrl,
+      uploadedVideoKey: bg === 'video' ? activeVideoBlobKey : null,
+      bold,
+      allCaps,
+      updatedAt: Date.now()
+    };
+
+    const requestSignature = JSON.stringify({
+      text: data.text,
+      fontSize: data.fontSize,
+      background: data.background,
+      fontFamily: data.fontFamily,
+      videoUrl: data.videoUrl,
+      uploadedVideoKey: data.uploadedVideoKey,
+      bold: data.bold,
+      allCaps: data.allCaps,
+    });
+
     localStorage.setItem('jamc_live_display', JSON.stringify(data));
-    try {
-      await instance.post('obs-state', data);
-    } catch (err) {
-      console.error('Failed to broadcast data:', err);
-      Toast.fire({ icon: 'error', title: 'Broadcast Failed!' });
+    obsBroadcastChannelRef.current?.postMessage(data);
+
+    if (requestSignature === lastObsPayloadRef.current || requestSignature === pendingObsPayloadRef.current) {
+      return;
     }
+
+    if (obsBroadcastTimerRef.current !== null) {
+      window.clearTimeout(obsBroadcastTimerRef.current);
+    }
+
+    pendingObsPayloadRef.current = requestSignature;
+    obsBroadcastTimerRef.current = window.setTimeout(async () => {
+      try {
+        await fetch(OBS_STATE_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(data),
+        });
+        lastObsPayloadRef.current = requestSignature;
+      } catch (err) {
+        pendingObsPayloadRef.current = '';
+        console.error('Failed to broadcast data:', err);
+        Toast.fire({ icon: 'error', title: 'Broadcast Failed!' });
+        return;
+      } finally {
+        obsBroadcastTimerRef.current = null;
+      }
+      pendingObsPayloadRef.current = '';
+    }, 120);
   };
 
   const quickSlides = useMemo(() => {
@@ -218,9 +434,15 @@ export default function EasyWorshipController() {
   const hasVideoBackground = bgType === 'video';
   const hasValidVideoUrl = videoUrl.trim().length > 0;
   const selectedVideoBackground = videoBackgroundLibrary.find(item => item.id === selectedVideoBackgroundId) || null;
-  const slowBackgrounds = videoBackgroundLibrary.filter(item => item.speed === 'slow');
-  const fastBackgrounds = videoBackgroundLibrary.filter(item => item.speed === 'fast');
   const ambientBackgrounds = videoBackgroundLibrary.filter(item => item.mood === 'ambient' || item.mood === 'prayer');
+  const slowBackgrounds = videoBackgroundLibrary.filter(item => item.speed === 'slow' && item.mood !== 'ambient' && item.mood !== 'prayer');
+  const fastBackgrounds = videoBackgroundLibrary.filter(item => item.speed === 'fast' && item.mood !== 'ambient' && item.mood !== 'prayer');
+  const otherBackgrounds = videoBackgroundLibrary.filter(
+    item =>
+      !ambientBackgrounds.some(ambient => ambient.id === item.id) &&
+      !slowBackgrounds.some(slow => slow.id === item.id) &&
+      !fastBackgrounds.some(fast => fast.id === item.id)
+  );
   const lastBroadcastLabel = useMemo(() => {
     if (!lastBroadcastAt) return 'Waiting';
     return new Date(lastBroadcastAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
@@ -337,21 +559,83 @@ export default function EasyWorshipController() {
     }
   };
 
+  const handleUploadVideoSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (draftUploadObjectUrlRef.current) {
+      URL.revokeObjectURL(draftUploadObjectUrlRef.current);
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    draftUploadObjectUrlRef.current = objectUrl;
+    setUploadedVideoFile(file);
+    setVideoInputMode('upload');
+    setBgType('video');
+    setSelectedVideoBackgroundId(null);
+    setUploadedVideoStoragePath(null);
+    setActiveVideoBlobKey(null);
+    setVideoUrl(objectUrl);
+    setIsUploadingVideo(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('video', file);
+
+      const response = await instance.post('background-videos/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      const uploadedUrl = response.data?.url;
+      const storagePath = response.data?.path;
+
+      if (!uploadedUrl || !storagePath) {
+        throw new Error('Upload response missing URL or path');
+      }
+
+      setVideoUrl(resolveBackgroundVideoUrl(uploadedUrl, storagePath));
+      setUploadedVideoStoragePath(storagePath);
+      Toast.fire({ icon: 'success', title: `${file.name} uploaded` });
+    } catch (error) {
+      console.error('Failed to upload background video:', error);
+      setVideoUrl('');
+      setUploadedVideoStoragePath(null);
+      setUploadedVideoFile(null);
+      Toast.fire({ icon: 'error', title: 'Video upload failed' });
+    } finally {
+      setIsUploadingVideo(false);
+      event.target.value = '';
+    }
+  };
+
   const applyVideoBackground = (background: VideoBackgroundItem) => {
     setBgType('video');
-    setVideoUrl(background.url);
+    setVideoUrl(resolveBackgroundVideoUrl(background.url, background.storagePath));
     setSelectedVideoBackgroundId(background.id);
+    setVideoInputMode(background.sourceType);
+    setUploadedVideoFile(null);
+    setUploadedVideoStoragePath(background.storagePath || null);
+    setActiveVideoBlobKey(null);
     Toast.fire({ icon: 'success', title: `${background.name} ready` });
   };
 
   const handleSaveVideoBackground = async () => {
     const trimmedUrl = videoUrl.trim();
-    if (!trimmedUrl) {
+    const isUploadMode = videoInputMode === 'upload';
+
+    if (isUploadMode && (!uploadedVideoStoragePath || !trimmedUrl)) {
+      Toast.fire({ icon: 'warning', title: 'Upload a video first' });
+      return;
+    }
+
+    if (!isUploadMode && !trimmedUrl) {
       Toast.fire({ icon: 'warning', title: 'Add a video URL first' });
       return;
     }
 
-    const existingBackground = videoBackgroundLibrary.find(item => item.url === trimmedUrl);
+    const existingBackground = isUploadMode
+      ? videoBackgroundLibrary.find(item => item.sourceType === 'upload' && item.storagePath === uploadedVideoStoragePath)
+      : videoBackgroundLibrary.find(item => item.sourceType === 'link' && item.url === trimmedUrl);
     if (existingBackground) {
       setSelectedVideoBackgroundId(existingBackground.id);
       Toast.fire({ icon: 'info', title: 'Already saved in library' });
@@ -400,17 +684,25 @@ export default function EasyWorshipController() {
 
     if (!value) return;
 
+    const nextId = Date.now().toString();
+
     const newBackground: VideoBackgroundItem = {
-      id: Date.now().toString(),
+      id: nextId,
       name: value.name,
-      url: trimmedUrl,
+      url: resolveBackgroundVideoUrl(videoUrl, isUploadMode ? uploadedVideoStoragePath : null),
       speed: value.speed,
       mood: value.mood,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      sourceType: isUploadMode ? 'upload' : 'link',
+      storagePath: isUploadMode ? uploadedVideoStoragePath || undefined : undefined
     };
 
     setVideoBackgroundLibrary(prev => [newBackground, ...prev]);
     setSelectedVideoBackgroundId(newBackground.id);
+    setUploadedVideoFile(null);
+    if (uploadInputRef.current) {
+      uploadInputRef.current.value = '';
+    }
     Toast.fire({ icon: 'success', title: 'Saved to background library' });
   };
 
@@ -429,11 +721,75 @@ export default function EasyWorshipController() {
 
     if (!result.isConfirmed) return;
 
+    if (target.sourceType === 'upload' && target.storagePath) {
+      try {
+        await instance.post('background-videos/delete', { path: target.storagePath });
+      } catch (error) {
+        console.error('Failed to delete uploaded background video:', error);
+      }
+    }
+
     setVideoBackgroundLibrary(prev => prev.filter(item => item.id !== backgroundId));
     if (selectedVideoBackgroundId === backgroundId) {
       setSelectedVideoBackgroundId(null);
     }
     Toast.fire({ icon: 'success', title: 'Background removed' });
+  };
+
+  const renderBackgroundSection = (title: string, description: string, items: VideoBackgroundItem[]) => {
+    if (items.length === 0) return null;
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 px-1">
+          <h3 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-800 dark:text-zinc-100">{title}</h3>
+          <span className="px-2.5 py-1 rounded-full bg-zinc-200/70 dark:bg-zinc-800 text-[9px] font-black uppercase tracking-widest text-zinc-500">
+            {items.length}
+          </span>
+          <p className="text-[10px] font-semibold text-zinc-400">{description}</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {items.map(background => {
+            const isSelected = selectedVideoBackgroundId === background.id;
+            return (
+              <div key={background.id} className={`rounded-[2rem] border p-4 transition-all ${
+                isSelected
+                  ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/20 shadow-xl shadow-indigo-500/10'
+                  : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40'
+              }`}>
+                <div className="aspect-video rounded-[1.4rem] overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-black relative mb-4">
+                  <video className="w-full h-full object-cover" src={background.url} autoPlay muted loop playsInline preload="metadata" />
+                  <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                    <span className="px-2 py-1 rounded-full bg-black/70 text-white text-[8px] font-black uppercase tracking-widest">{background.speed}</span>
+                    <span className="px-2 py-1 rounded-full bg-black/70 text-white text-[8px] font-black uppercase tracking-widest">{background.mood}</span>
+                    <span className="px-2 py-1 rounded-full bg-black/70 text-white text-[8px] font-black uppercase tracking-widest">{background.sourceType}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-black text-zinc-900 dark:text-zinc-100">{background.name}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                      Saved {new Date(background.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => applyVideoBackground(background)} className="flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all">
+                      <Film className="w-4 h-4" /> Use Background
+                    </button>
+                    <button onClick={() => handleDeleteVideoBackground(background.id)} className="p-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 text-zinc-400 hover:text-red-500 hover:border-red-300 dark:hover:border-red-800 transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -529,14 +885,14 @@ export default function EasyWorshipController() {
       </div>
 
       {showMonitor && (
-        <Draggable nodeRef={nodeRef} handle=".drag-handle" bounds="parent">
-          <div ref={nodeRef} className="fixed top-28 right-8 z-100 w-full max-w-90 bg-zinc-950 p-4 rounded-[2.5rem] border border-zinc-800 shadow-2xl space-y-4">
+        <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".monitor-close,button,input,select,option" bounds="parent">
+          <div ref={nodeRef} className="fixed top-28 right-3 md:right-6 lg:right-8 z-100 w-[min(calc(100vw-1.5rem),42rem)] bg-zinc-950 p-4 md:p-5 rounded-[2.5rem] border border-zinc-800 shadow-2xl space-y-4">
             <div className="flex items-center justify-between px-2 cursor-move drag-handle">
               <div className="flex items-center gap-2 text-zinc-500">
                 <GripHorizontal className="w-4 h-4" />
                 <span className="text-[9px] font-black uppercase tracking-widest">Live Monitor</span>
               </div>
-              <button onClick={() => setShowMonitor(false)} className="text-zinc-600 hover:text-red-500 transition-colors">
+              <button onClick={() => setShowMonitor(false)} className="monitor-close text-zinc-600 hover:text-red-500 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -620,17 +976,82 @@ export default function EasyWorshipController() {
 
                 {bgType === 'video' && (
                   <div className="space-y-2">
-                    <input
-                      type="text"
-                      placeholder="Paste video URL (.mp4)..."
-                      value={videoUrl}
-                      onChange={(e) => setVideoUrl(e.target.value)}
-                      className={`w-full text-[9px] rounded-xl px-3 py-2 border placeholder-zinc-700 outline-none ${
-                        hasValidVideoUrl ? 'bg-zinc-900 text-zinc-300 border-zinc-800 focus:border-indigo-500' : 'bg-amber-950/30 text-amber-100 border-amber-800/70 focus:border-amber-500'
-                      }`}
-                    />
-                    {!hasValidVideoUrl && (
-                      <p className="text-[8px] font-bold uppercase tracking-widest text-amber-400">Add a valid video source to avoid a blank background.</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => {
+                          setVideoInputMode('link');
+                          setUploadedVideoFile(null);
+                          setUploadedVideoStoragePath(null);
+                          setActiveVideoBlobKey(null);
+                          if (selectedVideoBackground?.sourceType === 'upload' || draftUploadObjectUrlRef.current === videoUrl) {
+                            setVideoUrl('');
+                            setSelectedVideoBackgroundId(null);
+                          }
+                        }}
+                        className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${
+                          videoInputMode === 'link' ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'
+                        }`}
+                      >
+                        Link
+                      </button>
+                      <button
+                        onClick={() => setVideoInputMode('upload')}
+                        className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${
+                          videoInputMode === 'upload' ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-zinc-800 text-zinc-500'
+                        }`}
+                      >
+                        Upload Video
+                      </button>
+                    </div>
+
+                    {videoInputMode === 'link' ? (
+                      <>
+                        <input
+                          type="text"
+                          placeholder="Paste video URL (.mp4)..."
+                          value={videoInputMode === 'link' ? videoUrl : ''}
+                          onChange={(e) => {
+                            setUploadedVideoFile(null);
+                            setUploadedVideoStoragePath(null);
+                            setSelectedVideoBackgroundId(null);
+                            setActiveVideoBlobKey(null);
+                            setVideoUrl(e.target.value);
+                          }}
+                          className={`w-full text-[9px] rounded-xl px-3 py-2 border placeholder-zinc-700 outline-none ${
+                            hasValidVideoUrl ? 'bg-zinc-900 text-zinc-300 border-zinc-800 focus:border-indigo-500' : 'bg-amber-950/30 text-amber-100 border-amber-800/70 focus:border-amber-500'
+                          }`}
+                        />
+                        {!hasValidVideoUrl && (
+                          <p className="text-[8px] font-bold uppercase tracking-widest text-amber-400">Add a valid video source to avoid a blank background.</p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          ref={uploadInputRef}
+                          type="file"
+                          accept="video/mp4,video/webm,video/ogg"
+                          onChange={handleUploadVideoSelect}
+                          className="hidden"
+                        />
+                        <button
+                          onClick={() => uploadInputRef.current?.click()}
+                          disabled={isUploadingVideo}
+                          className="w-full px-3 py-3 rounded-xl border border-dashed border-zinc-700 bg-zinc-900 text-zinc-300 text-[9px] font-black uppercase tracking-widest hover:border-indigo-500 hover:text-white transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                        >
+                          {isUploadingVideo ? (
+                            <>
+                              <LoaderCircle className="w-4 h-4 animate-spin" />
+                              Uploading video...
+                            </>
+                          ) : uploadedVideoFile ? (
+                            `Selected: ${uploadedVideoFile.name}`
+                          ) : (
+                            'Choose MP4 / WebM / OGG file'
+                          )}
+                        </button>
+                        <p className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">Upload sends the file to your Laravel backend for OBS-safe playback.</p>
+                      </>
                     )}
                     <div className="flex items-center gap-2">
                       <button onClick={handleSaveVideoBackground} className="flex-1 px-3 py-2 rounded-xl bg-indigo-500 text-white text-[8px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-colors">
@@ -743,43 +1164,11 @@ export default function EasyWorshipController() {
                 <p className="text-xs font-semibold text-zinc-400 mt-2">Switch to `video`, paste an `.mp4` URL, then save it here.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {videoBackgroundLibrary.map(background => {
-                  const isSelected = selectedVideoBackgroundId === background.id;
-                  return (
-                    <div key={background.id} className={`rounded-[2rem] border p-4 transition-all ${
-                      isSelected
-                        ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/20 shadow-xl shadow-indigo-500/10'
-                        : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40'
-                    }`}>
-                      <div className="aspect-video rounded-[1.4rem] overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-black relative mb-4">
-                        <video className="w-full h-full object-cover" src={background.url} muted loop playsInline preload="metadata" />
-                        <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-                          <span className="px-2 py-1 rounded-full bg-black/70 text-white text-[8px] font-black uppercase tracking-widest">{background.speed}</span>
-                          <span className="px-2 py-1 rounded-full bg-black/70 text-white text-[8px] font-black uppercase tracking-widest">{background.mood}</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-sm font-black text-zinc-900 dark:text-zinc-100">{background.name}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-                            Saved {new Date(background.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => applyVideoBackground(background)} className="flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all">
-                            <Film className="w-4 h-4" /> Use Background
-                          </button>
-                          <button onClick={() => handleDeleteVideoBackground(background.id)} className="p-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 text-zinc-400 hover:text-red-500 hover:border-red-300 dark:hover:border-red-800 transition-colors">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="space-y-8">
+                {renderBackgroundSection('Slow', 'Gentle motion for worship flow.', slowBackgrounds)}
+                {renderBackgroundSection('Fast', 'High-energy movement for praise.', fastBackgrounds)}
+                {renderBackgroundSection('Ambient', 'Soft atmosphere for prayer and reflection.', ambientBackgrounds)}
+                {renderBackgroundSection('Other', 'Everything else you saved.', otherBackgrounds)}
               </div>
             )}
           </div>

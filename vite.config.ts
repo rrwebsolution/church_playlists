@@ -3,10 +3,12 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import type { Plugin } from "vite";
+import { createObsStateService } from "./server/obs-state-service.js";
 
 // In-memory state store so OBS Browser Source can sync without a backend
 function obsStatePlugin(): Plugin {
-  let state = { text: '', fontSize: 60, background: 'none', fontFamily: 'Roboto, sans-serif', videoUrl: '', updatedAt: 0 };
+  const obsStateService = createObsStateService();
+
   return {
     name: 'obs-state',
     configureServer(server) {
@@ -17,32 +19,8 @@ function obsStatePlugin(): Plugin {
         next();
       });
 
-      server.middlewares.use('/api/obs-state', (req, res) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-        res.setHeader('Content-Type', 'application/json');
-
-        if (req.method === 'OPTIONS') { res.end(); return; }
-
-        if (req.method === 'GET') {
-          res.end(JSON.stringify(state));
-          return;
-        }
-
-        if (req.method === 'POST') {
-          let body = '';
-          req.on('data', chunk => { body += chunk; });
-          req.on('end', () => {
-            try { state = { ...state, ...JSON.parse(body) }; } catch {}
-            res.end(JSON.stringify({ ok: true }));
-          });
-          return;
-        }
-
-        res.statusCode = 405;
-        res.end();
-      });
+      server.middlewares.use('/api/obs-state/stream', obsStateService.handleStreamRequest);
+      server.middlewares.use('/api/obs-state', obsStateService.handleStateRequest);
     }
   };
 }

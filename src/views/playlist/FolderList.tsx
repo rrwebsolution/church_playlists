@@ -150,7 +150,9 @@ export default function FolderList({
   const handleSaveEdit = (folderId: string) => {
     const trimmedValue = editValue.trim();
     if (!trimmedValue) return;
-    setFolders((prev: PlaylistFolder[]) => prev.map((f) => (f.id === folderId ? { ...f, name: trimmedValue } : f)));
+    const updatedFolders = folders.map((f: PlaylistFolder) => (f.id === folderId ? { ...f, name: trimmedValue } : f));
+    setFolders(updatedFolders);
+    if (persistFoldersNow) persistFoldersNow(updatedFolders);
     setEditingId(null);
     setEditValue('');
   };

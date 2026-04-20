@@ -81,9 +81,7 @@ const getObsLyricsText = (text: string) => {
 
 export default function EasyWorshipView() {
   const searchParams = new URLSearchParams(window.location.search);
-  const isObsLyricsOnly =
-    window.location.pathname === '/obs-lyrics' ||
-    searchParams.get('obs') === 'lyrics';
+  const isObsLyricsOnly = searchParams.get('obs') === 'lyrics';
   const [lyrics, setLyrics] = useState('');
   const [fontSize, setFontSize] = useState(60);
   const [bgType, setBgType] = useState<BackgroundType>('none');

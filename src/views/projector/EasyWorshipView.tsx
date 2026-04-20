@@ -74,6 +74,15 @@ export default function EasyWorshipView() {
   const uploadedVideoObjectUrlRef = useRef<string | null>(null);
   lyricsRef.current = lyrics;
 
+  const displayedLyrics = isObsLyricsOnly
+    ? lyrics
+        .split(/\n\s*\n/)
+        .map((block) => block.trim())
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('\n\n')
+    : lyrics;
+
   const handleEnterFullscreen = () => {
     document.documentElement.requestFullscreen().catch(() => {});
     setNeedsFullscreen(false);
@@ -308,14 +317,17 @@ export default function EasyWorshipView() {
       )}
 
       <div
-        className={`transition-all duration-500 ease-in-out transform w-full max-w-[95%] flex justify-center relative z-10 ${
+        className={`transition-all duration-500 ease-in-out transform w-full flex justify-center relative z-10 ${
           isVisible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-2'
         }`}
+        style={{
+          maxWidth: isObsLyricsOnly ? '70%' : '95%',
+        }}
       >
         <h1
           className="text-white text-center font-bold leading-[1.2] tracking-wide"
           style={{
-            fontSize: `${fontSize}px`,
+            fontSize: `${isObsLyricsOnly ? Math.max(42, Math.round(fontSize * 0.82)) : fontSize}px`,
             fontFamily,
             fontWeight: isBold ? 'bold' : 'normal',
             textTransform: isAllCaps ? 'uppercase' : 'none',
@@ -324,7 +336,7 @@ export default function EasyWorshipView() {
               : '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
           }}
         >
-          <span className="whitespace-pre-wrap">{lyrics}</span>
+          <span className="whitespace-pre-wrap">{displayedLyrics}</span>
         </h1>
       </div>
     </div>

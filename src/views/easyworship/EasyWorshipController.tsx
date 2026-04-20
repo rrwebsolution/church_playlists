@@ -35,7 +35,16 @@ const OBS_STATE_API_URL = isLocalObsHost
   ? '/api/obs-state'
   : (import.meta.env.VITE_OBS_STATE_URL || '/api/obs-state');
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
-const BACKEND_BASE_URL = (import.meta.env.VITE_URL || window.location.origin).replace(/\/+$/, '');
+const LOCAL_BACKEND_BASE_URL =
+  typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}`
+    : '';
+const CONFIGURED_BACKEND_BASE_URL = (import.meta.env.VITE_URL || '').replace(/\/+$/, '');
+const BACKEND_BASE_URL = (
+  isLocalObsHost
+    ? (LOCAL_BACKEND_BASE_URL || window.location.origin)
+    : (CONFIGURED_BACKEND_BASE_URL || window.location.origin)
+).replace(/\/+$/, '');
 const DEFAULT_MAX_BACKGROUND_VIDEO_MB = 25;
 const parsedMaxBackgroundVideoMb = Number(import.meta.env.VITE_BACKGROUND_VIDEO_MAX_MB);
 const MAX_BACKGROUND_VIDEO_MB = Number.isFinite(parsedMaxBackgroundVideoMb) && parsedMaxBackgroundVideoMb > 0
@@ -51,18 +60,58 @@ const formatFileSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(bytes >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
 };
 
+const normalizeStoragePath = (value?: string | null) => {
+  if (!value) return '';
+
+  return value
+    .trim()
+    .replace(/^https?:\/\/[^/]+/i, '')
+    .replace(/^\/+/, '')
+    .replace(/^public\//i, '')
+    .replace(/^storage\//i, '');
+};
+
 const resolveBackgroundVideoUrl = (url?: string | null, storagePath?: string | null) => {
-  if (storagePath) {
-    return `${BACKEND_BASE_URL}/storage/${storagePath.replace(/^\/+/, '')}`;
+  const trimmedUrl = url?.trim() || '';
+  const normalizedStoragePath = normalizeStoragePath(storagePath || trimmedUrl);
+
+  if (trimmedUrl.startsWith('blob:')) return trimmedUrl;
+  if (normalizedStoragePath) {
+    return `${BACKEND_BASE_URL}/storage/${normalizedStoragePath}`;
+  }
+  if (/^https?:\/\//i.test(trimmedUrl)) {
+    try {
+      const parsedUrl = new URL(trimmedUrl);
+
+      // If the backend returns a localhost/private URL in production, rebuild it
+      // against the configured backend base so deployed clients can actually reach it.
+      if (!isLocalObsHost && isPrivateNetworkHost(parsedUrl.hostname) && normalizedStoragePath) {
+        return `${BACKEND_BASE_URL}/storage/${normalizedStoragePath}`;
+      }
+
+      return trimmedUrl;
+    } catch {
+      if (normalizedStoragePath) {
+        return `${BACKEND_BASE_URL}/storage/${normalizedStoragePath}`;
+      }
+      return trimmedUrl;
+    }
+  }
+  if (trimmedUrl.startsWith('/api/')) {
+    return `${BACKEND_BASE_URL}${trimmedUrl}`;
+  }
+  if (trimmedUrl.startsWith('/storage/')) {
+    return `${BACKEND_BASE_URL}${trimmedUrl}`;
+  }
+  if (/^storage\//i.test(trimmedUrl)) {
+    return `${BACKEND_BASE_URL}/${trimmedUrl.replace(/^\/+/, '')}`;
   }
 
-  if (!url) return '';
-  if (/^https?:\/\//i.test(url) || url.startsWith('blob:')) return url;
-  if (url.startsWith('/storage/')) {
-    return `${BACKEND_BASE_URL}${url}`;
+  if (normalizedStoragePath) {
+    return `${BACKEND_BASE_URL}/storage/${normalizedStoragePath}`;
   }
 
-  return url;
+  return trimmedUrl;
 };
 
 const FONTS = [

@@ -1140,9 +1140,10 @@ export default function EasyWorshipController() {
                     {videoInputMode === 'link' ? (
                       <>
                         <input
+                          key="link-url-input"
                           type="text"
                           placeholder="Paste video URL (.mp4)..."
-                          value={videoInputMode === 'link' ? videoUrl : ''}
+                          value={videoUrl || ''}
                           onChange={(e) => {
                             setUploadedVideoFile(null);
                             setUploadedVideoStoragePath(null);
@@ -1161,6 +1162,7 @@ export default function EasyWorshipController() {
                     ) : (
                       <>
                         <input
+                          key="file-upload-input"
                           ref={uploadInputRef}
                           type="file"
                           accept="video/mp4,video/webm,video/ogg"

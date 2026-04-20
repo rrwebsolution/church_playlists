@@ -36,6 +36,13 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
+    proxy: {
+      '/backend-api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/backend-api/, '/api'),
+      },
+    },
     // This is a common addition for SPA routing on platforms like Vercel
     // It ensures that when you hit a route like /projector directly,
     // Vite serves your index.html, allowing React Router (or similar) to handle it.

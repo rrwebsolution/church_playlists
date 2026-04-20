@@ -1,7 +1,8 @@
 import axios from "axios";
 
 // Kuhaon nato ang URL sa .env.
-const apiUrl = import.meta.env.VITE_URL || 'http://localhost/jamctagoloan-backend/public';
+const isDev = import.meta.env.DEV;
+const apiUrl = import.meta.env.VITE_URL || 'https://jamctagoloan-backend-ynnw2j0s.on-forge.com';
 
 // Maghimo tag "Map" para i-track ang mga nagdagan nga requests
 const pendingRequests = new Map();
@@ -12,7 +13,7 @@ const generateRequestKey = (config:any) => {
 };
 
 const instance = axios.create({
-    baseURL: `${apiUrl}/api/`,
+    baseURL: isDev ? '/backend-api/' : `${apiUrl}/api/`,
     headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',

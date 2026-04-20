@@ -807,8 +807,12 @@ export default function EasyWorshipController() {
       setVideoUrl(resolvedExistingUrl);
       setSelectedVideoBackgroundId(existingBackground.id);
       setVideoInputMode(existingBackground.sourceType);
+      setUploadedVideoFile(null);
       setUploadedVideoStoragePath(existingBackground.storagePath || null);
       broadcastData(liveText, previewFontSize, 'video', fontFamily, resolvedExistingUrl, isBold, isAllCaps);
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = '';
+      }
       Toast.fire({ icon: 'info', title: 'Already saved in library' });
       return;
     }
@@ -819,19 +823,35 @@ export default function EasyWorshipController() {
       mood: BackgroundMood;
     }>({
       title: 'Save Background',
+      icon: 'question',
+      width: 520,
+      showCloseButton: true,
+      confirmButtonText: 'Save Background',
+      cancelButtonText: 'Cancel',
       html: `
-        <input id="ew-bg-name" class="swal2-input" placeholder="Background name" value="Sunday Motion">
-        <select id="ew-bg-speed" class="swal2-input">
-          <option value="slow">Slow</option>
-          <option value="medium">Medium</option>
-          <option value="fast">Fast</option>
-        </select>
-        <select id="ew-bg-mood" class="swal2-input">
-          <option value="worship">Worship</option>
-          <option value="praise">Praise</option>
-          <option value="ambient">Ambient</option>
-          <option value="prayer">Prayer</option>
-        </select>
+        <div style="display:grid;gap:12px;text-align:left;padding-top:8px;">
+          <label style="display:grid;gap:6px;">
+            <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#71717a;">Background name</span>
+            <input id="ew-bg-name" class="swal2-input" placeholder="Sunday Motion" value="Sunday Motion" style="margin:0;width:100%;">
+          </label>
+          <label style="display:grid;gap:6px;">
+            <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#71717a;">Speed</span>
+            <select id="ew-bg-speed" class="swal2-input" style="margin:0;width:100%;">
+              <option value="slow">Slow</option>
+              <option value="medium">Medium</option>
+              <option value="fast">Fast</option>
+            </select>
+          </label>
+          <label style="display:grid;gap:6px;">
+            <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#71717a;">Mood</span>
+            <select id="ew-bg-mood" class="swal2-input" style="margin:0;width:100%;">
+              <option value="worship">Worship</option>
+              <option value="praise">Praise</option>
+              <option value="ambient">Ambient</option>
+              <option value="prayer">Prayer</option>
+            </select>
+          </label>
+        </div>
       `,
       focusConfirm: false,
       showCancelButton: true,
@@ -873,6 +893,7 @@ export default function EasyWorshipController() {
     setBgType('video');
     setVideoUrl(resolvedNewUrl);
     setSelectedVideoBackgroundId(newBackground.id);
+    setUploadedVideoFile(null);
     setUploadedVideoStoragePath(newBackground.storagePath || null);
     setActiveVideoBlobKey(null);
     setVideoInputMode(newBackground.sourceType);

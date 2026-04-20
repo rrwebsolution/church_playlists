@@ -540,8 +540,11 @@ export default function EasyWorshipController() {
       return;
     }
 
-    const matchedIndex = quickSlides.findIndex(slide => slide.text === liveText);
-    setLiveSlideIndex(prev => (prev === matchedIndex ? prev : matchedIndex >= 0 ? matchedIndex : null));
+    setLiveSlideIndex(prev => {
+      if (prev !== null && quickSlides[prev]?.text === liveText) return prev;
+      const matchedIndex = quickSlides.findIndex(slide => slide.text === liveText);
+      return matchedIndex >= 0 ? matchedIndex : null;
+    });
   }, [liveText, quickSlides]);
 
   useEffect(() => {

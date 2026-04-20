@@ -1256,9 +1256,14 @@ export default function EasyWorshipController() {
                           placeholder="Paste video URL (.mp4)..."
                           value={videoLinkInput}
                           onChange={(e) => {
+                            const nextUrl = e.target.value;
                             setUploadedVideoFile(null);
                             setUploadedVideoStoragePath(null);
-                            setVideoLinkInput(e.target.value);
+                            setSelectedVideoBackgroundId(null);
+                            setActiveVideoBlobKey(null);
+                            setVideoLinkInput(nextUrl);
+                            setBgType('video');
+                            setVideoUrl(nextUrl.trim());
                           }}
                           className={`w-full text-[9px] rounded-xl px-3 py-2 border placeholder-zinc-700 outline-none ${
                             videoLinkInput.trim().length > 0 ? 'bg-zinc-900 text-zinc-300 border-zinc-800 focus:border-indigo-500' : 'bg-amber-950/30 text-amber-100 border-amber-800/70 focus:border-amber-500'

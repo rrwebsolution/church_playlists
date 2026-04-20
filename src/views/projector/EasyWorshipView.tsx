@@ -91,7 +91,6 @@ export default function EasyWorshipView() {
   const [videoUrl, setVideoUrl] = useState('');
   const [uploadedVideoKey, setUploadedVideoKey] = useState<string | null>(null);
   const [resolvedUploadedVideoUrl, setResolvedUploadedVideoUrl] = useState('');
-  const [isVisible, setIsVisible] = useState(false);
   const [needsFullscreen, setNeedsFullscreen] = useState(
     searchParams.get('fs') === '1'
   );
@@ -131,7 +130,6 @@ export default function EasyWorshipView() {
     const isClearing = newText.trim() === '';
 
     if (isClearing) {
-      setIsVisible(false);
       setLyrics('');
       applyVisualState();
       return;
@@ -139,7 +137,6 @@ export default function EasyWorshipView() {
 
     setLyrics(newText);
     applyVisualState();
-    setIsVisible(true);
   }, []);
 
   useEffect(() => {
@@ -312,9 +309,7 @@ export default function EasyWorshipView() {
       )}
 
       <div
-        className={`transition-all duration-150 ease-out transform w-full flex justify-center relative z-10 ${
-          isVisible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-2'
-        }`}
+        className="w-full flex justify-center relative z-10"
         style={{
           maxWidth: isObsLyricsOnly ? '70%' : '95%',
         }}

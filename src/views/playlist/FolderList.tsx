@@ -40,9 +40,9 @@ const getFolderTime = (folder: any) => {
   return (timeVal > 1000000000000) ? timeVal : 0;
 };
 
-export default function FolderList({ 
-  folders, setFolders, setActiveFolderId, currentSong, 
-  isPlaying, inputValue 
+export default function FolderList({
+  folders, setFolders, setActiveFolderId, currentSong,
+  isPlaying, inputValue, persistFoldersNow
 }: any) {
 
   const navigate = useNavigate();
@@ -97,13 +97,15 @@ export default function FolderList({
       setIsCreating(false);
       return;
     }
-    const newFolder: any = { 
-      id: Date.now().toString(), 
-      name: trimmedValue, 
-      songs:[],
+    const newFolder: any = {
+      id: Date.now().toString(),
+      name: trimmedValue,
+      songs: [],
       created_at: new Date().toISOString()
     };
-    setFolders((prev: PlaylistFolder[]) => [newFolder, ...prev]);
+    const updatedFolders = [newFolder, ...folders];
+    setFolders(updatedFolders);
+    if (persistFoldersNow) persistFoldersNow(updatedFolders);
     setIsCreating(false);
     setCreateValue('');
   };

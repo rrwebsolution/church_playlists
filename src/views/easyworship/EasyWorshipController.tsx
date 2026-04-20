@@ -359,15 +359,7 @@ export default function EasyWorshipController() {
     if (videoUrl !== resolvedUrl) {
       setVideoUrl(resolvedUrl);
     }
-
-    if (videoInputMode !== selectedBackground.sourceType) {
-      setVideoInputMode(selectedBackground.sourceType);
-    }
-
-    if (selectedBackground.sourceType === 'link' && videoLinkInput !== selectedBackground.url) {
-      setVideoLinkInput(selectedBackground.url);
-    }
-  }, [bgType, selectedVideoBackgroundId, videoBackgroundLibrary, videoLinkInput]);
+  }, [bgType, selectedVideoBackgroundId, videoBackgroundLibrary, videoUrl]);
 
   useEffect(() => {
     let active = true;

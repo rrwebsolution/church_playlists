@@ -81,7 +81,9 @@ const getObsLyricsText = (text: string) => {
 
 export default function EasyWorshipView() {
   const searchParams = new URLSearchParams(window.location.search);
-  const isObsLyricsOnly = searchParams.get('obs') === 'lyrics';
+  const isObsLyricsOnly =
+    window.location.pathname === '/obs-lyrics' ||
+    searchParams.get('obs') === 'lyrics';
   const [lyrics, setLyrics] = useState('');
   const [fontSize, setFontSize] = useState(60);
   const [bgType, setBgType] = useState<BackgroundType>('none');
@@ -113,8 +115,7 @@ export default function EasyWorshipView() {
     if (data.updatedAt) lastUpdatedAt.current = data.updatedAt;
 
     const newText = data.text ?? '';
-
-    if (newText === lyricsRef.current) {
+    const applyVisualState = () => {
       if (data.fontSize) setFontSize(data.fontSize);
       if (data.background) setBgType(data.background);
       if (data.fontFamily) setFontFamily(data.fontFamily);
@@ -122,48 +123,24 @@ export default function EasyWorshipView() {
       if (data.uploadedVideoKey !== undefined) setUploadedVideoKey(data.uploadedVideoKey);
       if (data.bold !== undefined) setIsBold(data.bold);
       if (data.allCaps !== undefined) setIsAllCaps(data.allCaps);
+    };
+
+    if (newText === lyricsRef.current) {
+      applyVisualState();
       return;
     }
 
     const isClearing = newText.trim() === '';
-    const wasCleared = lyricsRef.current.trim() === '';
 
     if (isClearing) {
       setIsVisible(false);
-      setTimeout(() => {
-        setLyrics('');
-        if (data.fontSize) setFontSize(data.fontSize);
-        if (data.background) setBgType(data.background);
-        if (data.fontFamily) setFontFamily(data.fontFamily);
-        if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
-        if (data.uploadedVideoKey !== undefined) setUploadedVideoKey(data.uploadedVideoKey);
-        if (data.bold !== undefined) setIsBold(data.bold);
-        if (data.allCaps !== undefined) setIsAllCaps(data.allCaps);
-      }, 300);
-      return;
-    }
-
-    if (wasCleared) {
-      setLyrics(newText);
-      if (data.fontSize) setFontSize(data.fontSize);
-      if (data.background) setBgType(data.background);
-      if (data.fontFamily) setFontFamily(data.fontFamily);
-      if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
-      if (data.uploadedVideoKey !== undefined) setUploadedVideoKey(data.uploadedVideoKey);
-      if (data.bold !== undefined) setIsBold(data.bold);
-      if (data.allCaps !== undefined) setIsAllCaps(data.allCaps);
-      setIsVisible(true);
+      setLyrics('');
+      applyVisualState();
       return;
     }
 
     setLyrics(newText);
-    if (data.fontSize) setFontSize(data.fontSize);
-    if (data.background) setBgType(data.background);
-    if (data.fontFamily) setFontFamily(data.fontFamily);
-    if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
-    if (data.uploadedVideoKey !== undefined) setUploadedVideoKey(data.uploadedVideoKey);
-    if (data.bold !== undefined) setIsBold(data.bold);
-    if (data.allCaps !== undefined) setIsAllCaps(data.allCaps);
+    applyVisualState();
     setIsVisible(true);
   }, []);
 
@@ -337,7 +314,7 @@ export default function EasyWorshipView() {
       )}
 
       <div
-        className={`transition-all duration-500 ease-in-out transform w-full flex justify-center relative z-10 ${
+        className={`transition-all duration-150 ease-out transform w-full flex justify-center relative z-10 ${
           isVisible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-2'
         }`}
         style={{

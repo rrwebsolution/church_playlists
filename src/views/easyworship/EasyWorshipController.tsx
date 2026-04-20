@@ -572,7 +572,7 @@ export default function EasyWorshipController() {
         obsBroadcastTimerRef.current = null;
       }
       pendingObsPayloadRef.current = '';
-    }, 120);
+    }, 30);
   };
 
   const quickSlides = useMemo(() => {

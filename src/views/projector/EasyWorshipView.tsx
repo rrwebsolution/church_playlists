@@ -52,6 +52,33 @@ const getVideoBlob = async (key: string): Promise<Blob | null> => {
   return blob;
 };
 
+const getObsLyricsText = (text: string) => {
+  const trimmedText = text.trim();
+  if (!trimmedText) return '';
+
+  const stanzaBlocks = trimmedText
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  if (stanzaBlocks.length >= 2) {
+    return stanzaBlocks.slice(0, 2).join('\n\n');
+  }
+
+  const lines = trimmedText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length <= 4) {
+    return lines.join('\n');
+  }
+
+  return [lines.slice(0, 4).join('\n'), lines.slice(4, 8).join('\n')]
+    .filter(Boolean)
+    .join('\n\n');
+};
+
 export default function EasyWorshipView() {
   const searchParams = new URLSearchParams(window.location.search);
   const isObsLyricsOnly = searchParams.get('obs') === 'lyrics';
@@ -74,14 +101,7 @@ export default function EasyWorshipView() {
   const uploadedVideoObjectUrlRef = useRef<string | null>(null);
   lyricsRef.current = lyrics;
 
-  const displayedLyrics = isObsLyricsOnly
-    ? lyrics
-        .split(/\n\s*\n/)
-        .map((block) => block.trim())
-        .filter(Boolean)
-        .slice(0, 2)
-        .join('\n\n')
-    : lyrics;
+  const displayedLyrics = isObsLyricsOnly ? getObsLyricsText(lyrics) : lyrics;
 
   const handleEnterFullscreen = () => {
     document.documentElement.requestFullscreen().catch(() => {});

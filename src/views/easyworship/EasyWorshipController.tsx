@@ -35,6 +35,8 @@ const OBS_STATE_API_URL = isLocalObsHost
   ? '/api/obs-state'
   : (import.meta.env.VITE_OBS_STATE_URL || '/api/obs-state');
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
+const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
+const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';
 const LOCAL_BACKEND_BASE_URL =
   typeof window !== 'undefined'
     ? `${window.location.protocol}//${window.location.hostname}`
@@ -220,6 +222,7 @@ export default function EasyWorshipController() {
     return (saved as BackgroundType) || 'green';
   });
   const [videoUrl, setVideoUrl] = useState(() => localStorage.getItem('ew_video_url') || '');
+  const [videoLinkInput, setVideoLinkInput] = useState(() => localStorage.getItem('ew_video_link_input') || '');
   const [videoInputMode, setVideoInputMode] = useState<VideoInputMode>('link');
   const [selectedVideoBackgroundId, setSelectedVideoBackgroundId] = useState<string | null>(() => localStorage.getItem('ew_selected_video_bg_id'));
   const [activeVideoBlobKey, setActiveVideoBlobKey] = useState<string | null>(null);
@@ -311,6 +314,10 @@ export default function EasyWorshipController() {
   }, [videoUrl]);
 
   useEffect(() => {
+    localStorage.setItem('ew_video_link_input', videoLinkInput);
+  }, [videoLinkInput]);
+
+  useEffect(() => {
     localStorage.setItem('ew_bg_type', bgType);
   }, [bgType]);
 
@@ -356,7 +363,11 @@ export default function EasyWorshipController() {
     if (videoInputMode !== selectedBackground.sourceType) {
       setVideoInputMode(selectedBackground.sourceType);
     }
-  }, [bgType, selectedVideoBackgroundId, videoBackgroundLibrary]);
+
+    if (selectedBackground.sourceType === 'link' && videoLinkInput !== selectedBackground.url) {
+      setVideoLinkInput(selectedBackground.url);
+    }
+  }, [bgType, selectedVideoBackgroundId, videoBackgroundLibrary, videoLinkInput]);
 
   useEffect(() => {
     let active = true;
@@ -439,6 +450,29 @@ export default function EasyWorshipController() {
   }, []);
 
   useEffect(() => {
+    const handleProjectorReady = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== PROJECTOR_READY_MESSAGE_TYPE) return;
+
+      const raw = localStorage.getItem('jamc_live_display');
+      if (!raw) return;
+
+      try {
+        const payload = JSON.parse(raw) as ObsStatePayload;
+        projectorWindowRef.current?.postMessage(
+          { type: PROJECTOR_SYNC_MESSAGE_TYPE, payload },
+          window.location.origin
+        );
+      } catch {
+        // Ignore malformed projector sync cache.
+      }
+    };
+
+    window.addEventListener('message', handleProjectorReady);
+    return () => window.removeEventListener('message', handleProjectorReady);
+  }, []);
+
+  useEffect(() => {
     const frame = monitorFrameRef.current;
     if (!frame || typeof ResizeObserver === 'undefined') return;
 
@@ -512,6 +546,10 @@ export default function EasyWorshipController() {
 
     localStorage.setItem('jamc_live_display', JSON.stringify(data));
     obsBroadcastChannelRef.current?.postMessage(data);
+    projectorWindowRef.current?.postMessage(
+      { type: PROJECTOR_SYNC_MESSAGE_TYPE, payload: data },
+      window.location.origin
+    );
 
     if (requestSignature === lastObsPayloadRef.current || requestSignature === pendingObsPayloadRef.current) {
       return;
@@ -778,6 +816,7 @@ export default function EasyWorshipController() {
     setVideoUrl(resolveBackgroundVideoUrl(background.url, background.storagePath));
     setSelectedVideoBackgroundId(background.id);
     setVideoInputMode(background.sourceType);
+    setVideoLinkInput(background.sourceType === 'link' ? background.url : '');
     setUploadedVideoFile(null);
     setUploadedVideoStoragePath(background.storagePath || null);
     setActiveVideoBlobKey(null);
@@ -785,7 +824,7 @@ export default function EasyWorshipController() {
   };
 
   const handleSaveVideoBackground = async () => {
-    const trimmedUrl = videoUrl.trim();
+    const trimmedUrl = videoInputMode === 'link' ? videoLinkInput.trim() : videoUrl.trim();
     const isUploadMode = videoInputMode === 'upload';
 
     if (isUploadMode && (!uploadedVideoStoragePath || !trimmedUrl)) {
@@ -807,6 +846,7 @@ export default function EasyWorshipController() {
       setVideoUrl(resolvedExistingUrl);
       setSelectedVideoBackgroundId(existingBackground.id);
       setVideoInputMode(existingBackground.sourceType);
+      setVideoLinkInput(existingBackground.sourceType === 'link' ? existingBackground.url : '');
       setUploadedVideoFile(null);
       setUploadedVideoStoragePath(existingBackground.storagePath || null);
       broadcastData(liveText, previewFontSize, 'video', fontFamily, resolvedExistingUrl, isBold, isAllCaps);
@@ -880,7 +920,9 @@ export default function EasyWorshipController() {
     const newBackground: VideoBackgroundItem = {
       id: nextId,
       name: value.name,
-      url: resolveBackgroundVideoUrl(videoUrl, isUploadMode ? uploadedVideoStoragePath : null),
+      url: isUploadMode
+        ? resolveBackgroundVideoUrl(videoUrl, uploadedVideoStoragePath)
+        : trimmedUrl,
       speed: value.speed,
       mood: value.mood,
       createdAt: Date.now(),
@@ -893,6 +935,7 @@ export default function EasyWorshipController() {
     setBgType('video');
     setVideoUrl(resolvedNewUrl);
     setSelectedVideoBackgroundId(newBackground.id);
+    setVideoLinkInput(newBackground.sourceType === 'link' ? newBackground.url : '');
     setUploadedVideoFile(null);
     setUploadedVideoStoragePath(newBackground.storagePath || null);
     setActiveVideoBlobKey(null);
@@ -1192,9 +1235,9 @@ export default function EasyWorshipController() {
                           setUploadedVideoFile(null);
                           setUploadedVideoStoragePath(null);
                           setActiveVideoBlobKey(null);
-                          if (selectedVideoBackground?.sourceType === 'upload' || draftUploadObjectUrlRef.current === videoUrl) {
-                            setVideoUrl('');
-                            setSelectedVideoBackgroundId(null);
+                          setVideoLinkInput(selectedVideoBackground?.sourceType === 'link' ? selectedVideoBackground.url : '');
+                          if (uploadInputRef.current) {
+                            uploadInputRef.current.value = '';
                           }
                         }}
                         className={`px-3 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border transition-all ${
@@ -1219,19 +1262,17 @@ export default function EasyWorshipController() {
                           key="link-url-input"
                           type="text"
                           placeholder="Paste video URL (.mp4)..."
-                          value={videoUrl || ''}
+                          value={videoLinkInput}
                           onChange={(e) => {
                             setUploadedVideoFile(null);
                             setUploadedVideoStoragePath(null);
-                            setSelectedVideoBackgroundId(null);
-                            setActiveVideoBlobKey(null);
-                            setVideoUrl(e.target.value);
+                            setVideoLinkInput(e.target.value);
                           }}
                           className={`w-full text-[9px] rounded-xl px-3 py-2 border placeholder-zinc-700 outline-none ${
-                            hasValidVideoUrl ? 'bg-zinc-900 text-zinc-300 border-zinc-800 focus:border-indigo-500' : 'bg-amber-950/30 text-amber-100 border-amber-800/70 focus:border-amber-500'
+                            videoLinkInput.trim().length > 0 ? 'bg-zinc-900 text-zinc-300 border-zinc-800 focus:border-indigo-500' : 'bg-amber-950/30 text-amber-100 border-amber-800/70 focus:border-amber-500'
                           }`}
                         />
-                        {!hasValidVideoUrl && (
+                        {!videoLinkInput.trim() && (
                           <p className="text-[8px] font-bold uppercase tracking-widest text-amber-400">Add a valid video source to avoid a blank background.</p>
                         )}
                       </>

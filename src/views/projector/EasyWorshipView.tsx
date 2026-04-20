@@ -20,6 +20,8 @@ const API_URL = isLocalObsHost
   : (import.meta.env.VITE_OBS_STATE_URL || '/api/obs-state');
 const STREAM_URL = `${API_URL}/stream`;
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
+const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
+const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';
 const VIDEO_LIBRARY_DB = 'ew-video-library';
 const VIDEO_LIBRARY_STORE = 'videos';
 
@@ -199,6 +201,24 @@ export default function EasyWorshipView() {
       window.removeEventListener('storage', syncFromLocalStorage);
       window.removeEventListener('focus', syncOnFocus);
       window.removeEventListener('pageshow', syncOnFocus);
+    };
+  }, [applyData]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== PROJECTOR_SYNC_MESSAGE_TYPE) return;
+      applyData(event.data.payload);
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({ type: PROJECTOR_READY_MESSAGE_TYPE }, window.location.origin);
+    }
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
     };
   }, [applyData]);
 

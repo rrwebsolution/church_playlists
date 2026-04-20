@@ -73,7 +73,7 @@ const normalizeStoragePath = (value?: string | null) => {
 
 const resolveBackgroundVideoUrl = (url?: string | null, storagePath?: string | null) => {
   const trimmedUrl = url?.trim() || '';
-  const normalizedStoragePath = normalizeStoragePath(storagePath || trimmedUrl);
+  const normalizedStoragePath = normalizeStoragePath(storagePath);
 
   if (trimmedUrl.startsWith('blob:')) return trimmedUrl;
   if (normalizedStoragePath) {
@@ -91,9 +91,6 @@ const resolveBackgroundVideoUrl = (url?: string | null, storagePath?: string | n
 
       return trimmedUrl;
     } catch {
-      if (normalizedStoragePath) {
-        return `${BACKEND_BASE_URL}/storage/${normalizedStoragePath}`;
-      }
       return trimmedUrl;
     }
   }
@@ -107,8 +104,9 @@ const resolveBackgroundVideoUrl = (url?: string | null, storagePath?: string | n
     return `${BACKEND_BASE_URL}/${trimmedUrl.replace(/^\/+/, '')}`;
   }
 
-  if (normalizedStoragePath) {
-    return `${BACKEND_BASE_URL}/storage/${normalizedStoragePath}`;
+  const fallbackStoragePath = normalizeStoragePath(trimmedUrl);
+  if (fallbackStoragePath && /^(public\/|storage\/|\/storage\/)/i.test(trimmedUrl)) {
+    return `${BACKEND_BASE_URL}/storage/${fallbackStoragePath}`;
   }
 
   return trimmedUrl;

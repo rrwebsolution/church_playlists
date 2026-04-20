@@ -53,6 +53,8 @@ const getVideoBlob = async (key: string): Promise<Blob | null> => {
 };
 
 export default function EasyWorshipView() {
+  const searchParams = new URLSearchParams(window.location.search);
+  const isObsLyricsOnly = searchParams.get('obs') === 'lyrics';
   const [lyrics, setLyrics] = useState('');
   const [fontSize, setFontSize] = useState(60);
   const [bgType, setBgType] = useState<BackgroundType>('none');
@@ -64,7 +66,7 @@ export default function EasyWorshipView() {
   const [resolvedUploadedVideoUrl, setResolvedUploadedVideoUrl] = useState('');
   const [isVisible, setIsVisible] = useState(false);
   const [needsFullscreen, setNeedsFullscreen] = useState(
-    new URLSearchParams(window.location.search).get('fs') === '1'
+    searchParams.get('fs') === '1'
   );
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastUpdatedAt = useRef(0);
@@ -180,6 +182,21 @@ export default function EasyWorshipView() {
   }, []);
 
   useEffect(() => {
+    if (!isObsLyricsOnly) return;
+
+    const previousBodyBackground = document.body.style.background;
+    const previousHtmlBackground = document.documentElement.style.background;
+
+    document.body.style.background = 'transparent';
+    document.documentElement.style.background = 'transparent';
+
+    return () => {
+      document.body.style.background = previousBodyBackground;
+      document.documentElement.style.background = previousHtmlBackground;
+    };
+  }, [isObsLyricsOnly]);
+
+  useEffect(() => {
     const syncFromLocalStorage = () => {
       const raw = localStorage.getItem('jamc_live_display');
       if (!raw) return;
@@ -256,6 +273,7 @@ export default function EasyWorshipView() {
   }, [applyData]);
 
   const getBgClass = (type: BackgroundType) => {
+    if (isObsLyricsOnly) return 'bg-transparent';
     if (type === 'praise') return 'bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 animate-gradient-fast';
     if (type === 'worship') return 'bg-gradient-to-t from-black via-indigo-950 to-black animate-gradient-slow';
     if (type === 'green') return 'bg-[#00FF00]';
@@ -276,7 +294,7 @@ export default function EasyWorshipView() {
         </button>
       )}
 
-      {bgType === 'video' && (resolvedUploadedVideoUrl || videoUrl) && (
+      {!isObsLyricsOnly && bgType === 'video' && (resolvedUploadedVideoUrl || videoUrl) && (
         <video
           ref={videoRef}
           key={resolvedUploadedVideoUrl || videoUrl}
@@ -301,7 +319,9 @@ export default function EasyWorshipView() {
             fontFamily,
             fontWeight: isBold ? 'bold' : 'normal',
             textTransform: isAllCaps ? 'uppercase' : 'none',
-            textShadow: '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
+            textShadow: isObsLyricsOnly
+              ? '0px 4px 18px rgba(0,0,0,0.95), 0px 0px 8px rgba(0,0,0,0.75)'
+              : '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
           }}
         >
           <span className="whitespace-pre-wrap">{lyrics}</span>

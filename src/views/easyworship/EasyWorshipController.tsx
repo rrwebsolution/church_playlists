@@ -802,7 +802,13 @@ export default function EasyWorshipController() {
       ? videoBackgroundLibrary.find(item => item.sourceType === 'upload' && item.storagePath === uploadedVideoStoragePath)
       : videoBackgroundLibrary.find(item => item.sourceType === 'link' && item.url === trimmedUrl);
     if (existingBackground) {
+      const resolvedExistingUrl = resolveBackgroundVideoUrl(existingBackground.url, existingBackground.storagePath);
+      setBgType('video');
+      setVideoUrl(resolvedExistingUrl);
       setSelectedVideoBackgroundId(existingBackground.id);
+      setVideoInputMode(existingBackground.sourceType);
+      setUploadedVideoStoragePath(existingBackground.storagePath || null);
+      broadcastData(liveText, previewFontSize, 'video', fontFamily, resolvedExistingUrl, isBold, isAllCaps);
       Toast.fire({ icon: 'info', title: 'Already saved in library' });
       return;
     }
@@ -862,13 +868,15 @@ export default function EasyWorshipController() {
       storagePath: isUploadMode ? uploadedVideoStoragePath || undefined : undefined
     };
 
+    const resolvedNewUrl = resolveBackgroundVideoUrl(newBackground.url, newBackground.storagePath);
     setVideoBackgroundLibrary(prev => [newBackground, ...prev]);
+    setBgType('video');
+    setVideoUrl(resolvedNewUrl);
     setSelectedVideoBackgroundId(newBackground.id);
-    setUploadedVideoFile(null);
-    setUploadedVideoStoragePath(null);
+    setUploadedVideoStoragePath(newBackground.storagePath || null);
     setActiveVideoBlobKey(null);
-    setVideoInputMode('link');
-    setVideoUrl('');
+    setVideoInputMode(newBackground.sourceType);
+    broadcastData(liveText, previewFontSize, 'video', fontFamily, resolvedNewUrl, isBold, isAllCaps);
     if (uploadInputRef.current) {
       uploadInputRef.current.value = '';
     }

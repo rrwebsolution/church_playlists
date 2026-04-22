@@ -3,7 +3,8 @@ import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { ChevronLeft, MonitorDot, Layers, FileText, ChevronRight } from 'lucide-react';
 import type { PptPresentationFile } from '@/App';
 import { PPT_TEMPLATES } from '../Pptpresenatation'; 
-import { deserializeSlides, htmlToPlainText, plainTextToHtml } from '@/lib/ppt';
+import { deserializeSlides } from '@/lib/ppt';
+import { PresentationSlideCanvas, PRESENTATION_CANVAS_OVERLAY_CLASS } from '../components/PresentationSlideCanvas';
 
 export default function PptViewer() {
   const { id } = useParams<{ id: string }>();
@@ -23,19 +24,7 @@ export default function PptViewer() {
 
   const slides = useMemo(() => {
     if (presentation?.sourceText || presentation?.slideData) {
-      const parsedSlides = deserializeSlides(presentation.slideData, presentation.sourceText);
-      return parsedSlides.map((slideData) => {
-        const plainText = slideData.text || htmlToPlainText(slideData.html);
-        const lines = plainText.split('\n');
-        const firstLine = lines[0].trim();
-        const headerMatch = firstLine.match(/^\[?(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Tag|Ending|Instrumental)[^\]]*\]?:?$/i);
-        
-        let label = headerMatch ? headerMatch[1].replace(/[\[\]:]/g, '') : null;
-        let content = headerMatch && lines.length > 1 ? lines.slice(1).join('\n').trim() : plainText.trim();
-        const html = slideData.html || plainTextToHtml(slideData.text);
-
-        return { label, content, html, format: slideData.format, imageUrl: slideData.imageUrl };
-      });
+      return deserializeSlides(presentation.slideData, presentation.sourceText);
     }
     return [];
   }, [presentation?.slideData, presentation?.sourceText]);
@@ -118,39 +107,26 @@ export default function PptViewer() {
 
       {/* PRESENTATION CONTENT AREA */}
       <div className="flex-1 flex items-center justify-center p-6 md:p-12 relative">
+        {presentation.backgroundImageUrl && (
+          <img
+            src={presentation.backgroundImageUrl}
+            alt="Presentation background"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+        <div className={`${PRESENTATION_CANVAS_OVERLAY_CLASS} ${presentation.backgroundImageUrl ? 'bg-black/25' : 'bg-transparent'}`} />
         
         {presentation.sourceText ? (
-          /* 🔥 GI-AYO: Gitangtang ang secondary template.bg ug shadow 🔥 */
-          <div className={`w-full h-full flex flex-col items-center justify-center p-8 md:p-14 text-center relative transition-all duration-500 ${template.text} ${template.font}`}>
-            
-            {/* Slide Content */}
-            <div className="relative z-10 w-full max-w-6xl aspect-video mx-auto flex flex-col items-center justify-center animate-in zoom-in-95 fade-in duration-500">
-              {currentSlide ? (
-                <>
-                  {currentSlide.label && (
-                    <span className={`block text-2xl md:text-4xl mb-10 font-black uppercase tracking-[0.4em] opacity-70 ${template.accent}`}>
-                      {currentSlide.label}
-                    </span>
-                  )}
-                  {currentSlide.imageUrl && (
-                    <img src={currentSlide.imageUrl} alt={presentation.name} className="w-full max-h-[45vh] object-contain mb-8 rounded-3xl shadow-2xl" />
-                  )}
-                  <div
-                    className="leading-[1.1] drop-shadow-2xl w-full"
-                    style={{
-                      fontSize: `${Math.max(30, currentSlide.format.fontSize * 2.1)}px`,
-                      fontFamily: currentSlide.format.fontFamily,
-                    }}
-                    dangerouslySetInnerHTML={{ __html: currentSlide.html || plainTextToHtml(currentSlide.content) }}
-                  >
-                  </div>
-                </>
-              ) : (
-                <span className="opacity-20 italic text-4xl uppercase tracking-widest font-black">End of Presentation</span>
-              )}
-            </div>
+          <div className={`w-full h-full flex flex-col items-center justify-center p-6 md:p-10 text-center relative transition-all duration-500 ${template.text} ${template.font}`}>
+            <PresentationSlideCanvas
+              slide={currentSlide}
+              template={template}
+              backgroundImageUrl={presentation.backgroundImageUrl}
+              className="relative z-10 w-full max-w-6xl mx-auto animate-in zoom-in-95 fade-in duration-500 rounded-[2rem]"
+              frameClassName="rounded-[2rem]"
+              fontScale={1}
+            />
 
-            {/* Subtle Watermark Decoration */}
             <div className="absolute bottom-10 right-10 opacity-5 pointer-events-none">
                 <MonitorDot className="w-32 h-32 text-current" />
             </div>

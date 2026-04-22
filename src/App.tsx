@@ -3,7 +3,18 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './views/components/Sidebar';
 import { Header } from './views/components/Header';
 import { Footer } from './views/components/Footer';
-import type { PlaylistFolder, Song } from './views/types';
+import type {
+  AnnouncementItem,
+  AttendanceRecord,
+  CalendarEvent,
+  MemberProfile,
+  OfferingRecord,
+  PlaylistFolder,
+  SermonNote,
+  ServicePlan,
+  Song,
+  VolunteerSchedule,
+} from './views/types';
 import { X, GripHorizontal, Tv } from 'lucide-react';
 
 import axiosInstance from './plugin/axios';
@@ -43,6 +54,7 @@ export interface PptPresentationFile {
   sourceText?: string;
   slideData?: string;
   templateId?: string;
+  backgroundImageUrl?: string;
   sourceType?: 'generated' | 'uploaded';
   originalFileName?: string;
 }
@@ -65,11 +77,223 @@ const normalizePresentationIds = (items: PptPresentationFile[]) => {
   });
 };
 
+const createUniqueId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const createDefaultServicePlan = (): ServicePlan => ({
+  id: createUniqueId(),
+  title: 'Sunday Worship Service',
+  serviceDate: new Date().toISOString().slice(0, 10),
+  theme: '',
+  notes: '',
+  updatedAt: new Date().toISOString(),
+  items: [
+    { id: createUniqueId(), title: 'Opening Prayer', type: 'prayer', leader: '', durationMinutes: 5, notes: '', completed: false },
+    { id: createUniqueId(), title: 'Welcome & Opening', type: 'welcome', leader: '', durationMinutes: 5, notes: '', completed: false },
+    { id: createUniqueId(), title: 'Worship Set', type: 'song', leader: '', durationMinutes: 20, notes: '', completed: false },
+    { id: createUniqueId(), title: 'Announcements', type: 'announcement', leader: '', durationMinutes: 5, notes: '', completed: false },
+    { id: createUniqueId(), title: 'Offering', type: 'offering', leader: '', durationMinutes: 7, notes: '', completed: false },
+    { id: createUniqueId(), title: 'Sermon Proper', type: 'sermon', leader: '', durationMinutes: 35, notes: '', completed: false },
+    { id: createUniqueId(), title: 'Closing Prayer', type: 'closing', leader: '', durationMinutes: 5, notes: '', completed: false },
+  ],
+});
+
+const createDefaultSermonNote = (): SermonNote => ({
+  id: createUniqueId(),
+  title: 'Sunday Sermon Notes',
+  serviceDate: new Date().toISOString().slice(0, 10),
+  speaker: '',
+  series: '',
+  mainText: '',
+  keyIdea: '',
+  openingPrayer: '',
+  closingPrayer: '',
+  altarCall: '',
+  notes: '',
+  outline: [
+    { id: createUniqueId(), heading: 'Introduction', details: '' },
+    { id: createUniqueId(), heading: 'Main Point 1', details: '' },
+    { id: createUniqueId(), heading: 'Application', details: '' },
+  ],
+  verses: [
+    { id: createUniqueId(), reference: '', text: '' },
+  ],
+  actionSteps: [''],
+  updatedAt: new Date().toISOString(),
+});
+
+const createDefaultVolunteerSchedule = (): VolunteerSchedule => ({
+  id: createUniqueId(),
+  title: 'Sunday Volunteer Schedule',
+  serviceDate: new Date().toISOString().slice(0, 10),
+  serviceTime: '09:00',
+  venue: 'Main Sanctuary',
+  notes: '',
+  assignments: [
+    {
+      id: createUniqueId(),
+      ministry: 'worship',
+      role: 'Worship Leader',
+      volunteerName: '',
+      contact: '',
+      arrivalTime: '08:00',
+      status: 'pending',
+      notes: '',
+    },
+    {
+      id: createUniqueId(),
+      ministry: 'media',
+      role: 'Lyrics Operator',
+      volunteerName: '',
+      contact: '',
+      arrivalTime: '08:00',
+      status: 'pending',
+      notes: '',
+    },
+    {
+      id: createUniqueId(),
+      ministry: 'speaker',
+      role: 'Preacher',
+      volunteerName: '',
+      contact: '',
+      arrivalTime: '08:30',
+      status: 'pending',
+      notes: '',
+    },
+  ],
+  updatedAt: new Date().toISOString(),
+});
+
+const createDefaultAttendanceRecord = (): AttendanceRecord => ({
+  id: createUniqueId(),
+  title: 'Sunday Attendance',
+  serviceDate: new Date().toISOString().slice(0, 10),
+  serviceType: 'sunday-service',
+  venue: 'Main Sanctuary',
+  notes: '',
+  entries: [
+    {
+      id: createUniqueId(),
+      fullName: '',
+      category: 'member',
+      status: 'present',
+      contact: '',
+      ministry: '',
+      notes: '',
+    },
+  ],
+  updatedAt: new Date().toISOString(),
+});
+
+const createDefaultOfferingRecord = (): OfferingRecord => ({
+  id: createUniqueId(),
+  title: new Date().toLocaleString('en-US', { month: 'long' }),
+  isTitleEdited: false,
+  serviceDate: new Date().toISOString().slice(0, 10),
+  serviceType: 'sunday-service',
+  countedBy: '',
+  witnessBy: '',
+  treasuryNotes: '',
+  isSaved: false,
+  entries: [
+    {
+      id: createUniqueId(),
+      category: 'tithe',
+      amount: 0,
+      paymentMethod: 'cash',
+      donorName: '',
+      receivedBy: '',
+      notes: '',
+    },
+    {
+      id: createUniqueId(),
+      category: 'offering',
+      amount: 0,
+      paymentMethod: 'cash',
+      donorName: '',
+      receivedBy: '',
+      notes: '',
+    },
+  ],
+  expenses: [],
+  updatedAt: new Date().toISOString(),
+});
+
+const createDefaultMembers = (): MemberProfile[] => [
+  {
+    id: createUniqueId(),
+    fullName: 'Sample Church Member',
+    gender: 'female',
+    birthday: '',
+    phone: '',
+    email: '',
+    address: '',
+    ministry: 'Worship Team',
+    memberStatus: 'member',
+    civilStatus: 'single',
+    emergencyContact: '',
+    notes: '',
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+const createDefaultAnnouncements = (): AnnouncementItem[] => [
+  {
+    id: createUniqueId(),
+    title: 'Youth Fellowship This Friday',
+    eventDate: new Date().toISOString().slice(0, 10),
+    eventTime: '18:30',
+    venue: 'Youth Hall',
+    audience: 'youth',
+    category: 'event',
+    priority: 'featured',
+    isPublished: true,
+    shortText: 'Join us for worship, games, and a short message.',
+    body: 'Calling all youth! Bring your friends and come ready for worship, fun activities, and encouragement from the Word.',
+    contactPerson: '',
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+const createDefaultCalendarEvents = (): CalendarEvent[] => [
+  {
+    id: createUniqueId(),
+    title: 'Sunday Worship Service',
+    eventDate: new Date().toISOString().slice(0, 10),
+    endDate: '',
+    eventTime: '09:00',
+    venue: 'Main Sanctuary',
+    ministry: 'Church Wide',
+    eventType: 'service',
+    status: 'confirmed',
+    description: 'Main Sunday worship gathering with announcements, worship, and sermon.',
+    coordinator: '',
+    updatedAt: new Date().toISOString(),
+  },
+];
+
 export default function App() {
   const location = useLocation();
 
   const isEasyWorshipPage = location.pathname.includes('/app/easyworship');
-  const isFooterHiddenRoute = location.pathname.includes('/app/ppt-presentation') || location.pathname.includes('/app/settings');
+  const isMinistryToolRoute =
+    location.pathname.includes('/app/service-planner')
+    || location.pathname.includes('/app/sermon-notes')
+    || location.pathname.includes('/app/volunteer-scheduling')
+    || location.pathname.includes('/app/attendance-tracking')
+    || location.pathname.includes('/app/offering-records')
+    || location.pathname.includes('/app/member-directory')
+    || location.pathname.includes('/app/announcement-manager')
+    || location.pathname.includes('/app/calendar-planning');
+  const isFooterHiddenRoute =
+    location.pathname.includes('/app/ppt-presentation')
+    || location.pathname.includes('/app/settings')
+    || isMinistryToolRoute;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<'youtube' | 'link' | 'local'>('youtube');
   const [inputValue, setInputValue] = useState('');
@@ -132,6 +356,134 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('jamc_ppt_presentations', JSON.stringify(presentations));
   }, [presentations]);
+
+  const [servicePlans, setServicePlans] = useState<ServicePlan[]>(() => {
+    const saved = localStorage.getItem('jamc_service_plans');
+    if (!saved) return [createDefaultServicePlan()];
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [createDefaultServicePlan()];
+    } catch {
+      return [createDefaultServicePlan()];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_service_plans', JSON.stringify(servicePlans));
+  }, [servicePlans]);
+
+  const [sermonNotes, setSermonNotes] = useState<SermonNote[]>(() => {
+    const saved = localStorage.getItem('jamc_sermon_notes');
+    if (!saved) return [createDefaultSermonNote()];
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [createDefaultSermonNote()];
+    } catch {
+      return [createDefaultSermonNote()];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_sermon_notes', JSON.stringify(sermonNotes));
+  }, [sermonNotes]);
+
+  const [volunteerSchedules, setVolunteerSchedules] = useState<VolunteerSchedule[]>(() => {
+    const saved = localStorage.getItem('jamc_volunteer_schedules');
+    if (!saved) return [createDefaultVolunteerSchedule()];
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [createDefaultVolunteerSchedule()];
+    } catch {
+      return [createDefaultVolunteerSchedule()];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_volunteer_schedules', JSON.stringify(volunteerSchedules));
+  }, [volunteerSchedules]);
+
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>(() => {
+    const saved = localStorage.getItem('jamc_attendance_records');
+    if (!saved) return [createDefaultAttendanceRecord()];
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [createDefaultAttendanceRecord()];
+    } catch {
+      return [createDefaultAttendanceRecord()];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_attendance_records', JSON.stringify(attendanceRecords));
+  }, [attendanceRecords]);
+
+  const [offeringRecords, setOfferingRecords] = useState<OfferingRecord[]>(() => {
+    const saved = localStorage.getItem('jamc_offering_records');
+    if (!saved) return [createDefaultOfferingRecord()];
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [createDefaultOfferingRecord()];
+    } catch {
+      return [createDefaultOfferingRecord()];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_offering_records', JSON.stringify(offeringRecords));
+  }, [offeringRecords]);
+
+  const [members, setMembers] = useState<MemberProfile[]>(() => {
+    const saved = localStorage.getItem('jamc_members');
+    if (!saved) return createDefaultMembers();
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : createDefaultMembers();
+    } catch {
+      return createDefaultMembers();
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_members', JSON.stringify(members));
+  }, [members]);
+
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>(() => {
+    const saved = localStorage.getItem('jamc_announcements');
+    if (!saved) return createDefaultAnnouncements();
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : createDefaultAnnouncements();
+    } catch {
+      return createDefaultAnnouncements();
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_announcements', JSON.stringify(announcements));
+  }, [announcements]);
+
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => {
+    const saved = localStorage.getItem('jamc_calendar_events');
+    if (!saved) return createDefaultCalendarEvents();
+
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : createDefaultCalendarEvents();
+    } catch {
+      return createDefaultCalendarEvents();
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('jamc_calendar_events', JSON.stringify(calendarEvents));
+  }, [calendarEvents]);
 
 
   useEffect(() => {
@@ -224,6 +576,14 @@ export default function App() {
       setYtPlayer(null);
     }
   }, [currentSong]);
+
+  useEffect(() => {
+    if (!isMinistryToolRoute) return;
+
+    try { ytPlayerRef.current?.pauseVideo?.(); } catch (e) {}
+    setIsPlaying(false);
+    setShowFloatingPlayer(false);
+  }, [isMinistryToolRoute]);
 
   const handleVanillaSongEnded = (playerInstance: any) => {
     if (!autoPlayRef.current) { 
@@ -497,7 +857,27 @@ export default function App() {
     }
   }, [currentSong, ytPlayer]);
 
-  const currentActiveMenu = location.pathname.includes('playlist') ? 'folders' : location.pathname.includes('saved') ? 'saved' : 'home';
+  const currentActiveMenu = location.pathname.includes('playlist')
+    ? 'folders'
+    : location.pathname.includes('saved')
+      ? 'saved'
+      : location.pathname.includes('service-planner')
+        ? 'service-planner'
+        : location.pathname.includes('sermon-notes')
+          ? 'sermon-notes'
+        : location.pathname.includes('volunteer-scheduling')
+            ? 'volunteer-scheduling'
+          : location.pathname.includes('attendance-tracking')
+              ? 'attendance-tracking'
+            : location.pathname.includes('offering-records')
+                ? 'offering-records'
+              : location.pathname.includes('member-directory')
+                  ? 'member-directory'
+                : location.pathname.includes('announcement-manager')
+                    ? 'announcement-manager'
+                  : location.pathname.includes('calendar-planning')
+                      ? 'calendar-planning'
+        : 'home';
 
   return (
     <div className="flex h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 overflow-hidden relative">
@@ -518,7 +898,7 @@ export default function App() {
           onImportYT={handleImportYT} importingId={importingId}
         />
         
-        <main className={`flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-950/50 relative ${isEasyWorshipPage ? 'pb-8' : 'pb-32'}`}>
+        <main className={`flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-950/50 relative ${(isEasyWorshipPage || isFooterHiddenRoute) ? 'pb-8' : 'pb-32'}`}>
           <div className="mx-auto p-4 md:p-8">
             <Outlet 
               context={{ 
@@ -528,7 +908,15 @@ export default function App() {
               searchMode, setSearchMode, playHistory, setPlayHistory, ytPlayer, handleClearHistory,
               persistFoldersNow,
               // IDUGANG ANG PPT STATES SA CONTEXT
-              presentations, setPresentations
+              presentations, setPresentations,
+              servicePlans, setServicePlans,
+              sermonNotes, setSermonNotes,
+              volunteerSchedules, setVolunteerSchedules,
+              attendanceRecords, setAttendanceRecords,
+              offeringRecords, setOfferingRecords,
+              members, setMembers,
+              announcements, setAnnouncements,
+              calendarEvents, setCalendarEvents
               }} 
             />
           </div>

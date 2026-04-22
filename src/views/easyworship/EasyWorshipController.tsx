@@ -1026,7 +1026,7 @@ export default function EasyWorshipController() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-32 px-4 relative min-h-screen font-sans bg-zinc-50 dark:bg-zinc-950">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-32 px-4 relative min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pt-6 px-2">
         <div className="flex items-center gap-5">
           <div className="p-4 bg-indigo-500 text-white rounded-3xl shadow-xl shadow-indigo-500/20">

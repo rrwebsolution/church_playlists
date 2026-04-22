@@ -22,6 +22,8 @@ const STREAM_URL = `${API_URL}/stream`;
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
 const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
 const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';
+const PROJECTOR_SCENE_STORAGE_KEY = 'jamc_projector_scene';
+const PROJECTOR_SCENE_SYNC_TYPE = 'jamc-projector-scene-sync';
 const VIDEO_LIBRARY_DB = 'ew-video-library';
 const VIDEO_LIBRARY_STORE = 'videos';
 
@@ -91,6 +93,7 @@ export default function EasyWorshipView() {
   const [videoUrl, setVideoUrl] = useState('');
   const [uploadedVideoKey, setUploadedVideoKey] = useState<string | null>(null);
   const [resolvedUploadedVideoUrl, setResolvedUploadedVideoUrl] = useState('');
+  const [projectorScene, setProjectorScene] = useState<any>(null);
   const [needsFullscreen, setNeedsFullscreen] = useState(
     searchParams.get('fs') === '1'
   );
@@ -101,6 +104,7 @@ export default function EasyWorshipView() {
   lyricsRef.current = lyrics;
 
   const displayedLyrics = isObsLyricsOnly ? getObsLyricsText(lyrics) : lyrics;
+  const isAnnouncementMode = projectorScene?.mode === 'announcement' && projectorScene?.payload;
 
   const handleEnterFullscreen = () => {
     document.documentElement.requestFullscreen().catch(() => {});
@@ -108,6 +112,7 @@ export default function EasyWorshipView() {
   };
 
   const applyData = useCallback((data: any) => {
+    if (projectorScene?.mode === 'announcement') return;
     if (!data || (data.updatedAt && data.updatedAt <= lastUpdatedAt.current)) return;
     if (data.updatedAt) lastUpdatedAt.current = data.updatedAt;
 
@@ -137,6 +142,32 @@ export default function EasyWorshipView() {
 
     setLyrics(newText);
     applyVisualState();
+  }, [projectorScene]);
+
+  const applyProjectorScene = useCallback((scene: any) => {
+    if (!scene) return;
+
+    if (scene.mode === 'announcement') {
+      setProjectorScene(scene);
+      return;
+    }
+
+    setProjectorScene(null);
+
+    const raw = localStorage.getItem('jamc_live_display');
+    if (!raw) return;
+
+    try {
+      const data = JSON.parse(raw);
+      setLyrics(data.text ?? '');
+      if (data.fontSize) setFontSize(data.fontSize);
+      if (data.background) setBgType(data.background);
+      if (data.fontFamily) setFontFamily(data.fontFamily);
+      if (data.videoUrl !== undefined) setVideoUrl(data.videoUrl);
+      if (data.uploadedVideoKey !== undefined) setUploadedVideoKey(data.uploadedVideoKey);
+      if (data.bold !== undefined) setIsBold(data.bold);
+      if (data.allCaps !== undefined) setIsAllCaps(data.allCaps);
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -206,25 +237,42 @@ export default function EasyWorshipView() {
       } catch {}
     };
 
+    const syncProjectorScene = () => {
+      const raw = localStorage.getItem(PROJECTOR_SCENE_STORAGE_KEY);
+      if (!raw) return;
+
+      try {
+        applyProjectorScene(JSON.parse(raw));
+      } catch {}
+    };
+
     const syncOnFocus = () => {
+      syncProjectorScene();
       syncFromLocalStorage();
     };
 
     window.addEventListener('storage', syncFromLocalStorage);
+    window.addEventListener('storage', syncProjectorScene);
     window.addEventListener('focus', syncOnFocus);
     window.addEventListener('pageshow', syncOnFocus);
+    syncProjectorScene();
     syncFromLocalStorage();
 
     return () => {
       window.removeEventListener('storage', syncFromLocalStorage);
+      window.removeEventListener('storage', syncProjectorScene);
       window.removeEventListener('focus', syncOnFocus);
       window.removeEventListener('pageshow', syncOnFocus);
     };
-  }, [applyData]);
+  }, [applyData, applyProjectorScene]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
+      if (event.data?.type === PROJECTOR_SCENE_SYNC_TYPE) {
+        applyProjectorScene(event.data.payload);
+        return;
+      }
       if (event.data?.type !== PROJECTOR_SYNC_MESSAGE_TYPE) return;
       applyData(event.data.payload);
     };
@@ -238,7 +286,7 @@ export default function EasyWorshipView() {
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [applyData]);
+  }, [applyData, applyProjectorScene]);
 
   useEffect(() => {
     let channel: BroadcastChannel | null = null;
@@ -295,7 +343,7 @@ export default function EasyWorshipView() {
         </button>
       )}
 
-      {!isObsLyricsOnly && bgType === 'video' && (resolvedUploadedVideoUrl || videoUrl) && (
+      {!isObsLyricsOnly && !isAnnouncementMode && bgType === 'video' && (resolvedUploadedVideoUrl || videoUrl) && (
         <video
           ref={videoRef}
           key={resolvedUploadedVideoUrl || videoUrl}
@@ -308,27 +356,73 @@ export default function EasyWorshipView() {
         />
       )}
 
-      <div
-        className="w-full flex justify-center relative z-10"
-        style={{
-          maxWidth: isObsLyricsOnly ? '70%' : '95%',
-        }}
-      >
-        <h1
-          className="text-white text-center font-bold leading-[1.2] tracking-wide"
+      {isAnnouncementMode ? (
+        <div className="relative z-10 w-full max-w-6xl">
+          <div className="rounded-[3rem] border border-white/15 bg-black/35 p-10 backdrop-blur-md">
+            <div className="flex items-center justify-between gap-6">
+              <div>
+                <p className="text-sm font-black uppercase tracking-[0.35em] text-rose-300">
+                  {String(projectorScene.payload.audience || 'church-wide').replace('-', ' ')}
+                </p>
+                <h1 className="mt-4 text-6xl font-black uppercase leading-[0.95] text-white">
+                  {projectorScene.payload.title}
+                </h1>
+              </div>
+              <div className="rounded-full border border-white/15 bg-white/10 px-6 py-3 text-sm font-black uppercase tracking-[0.25em] text-amber-200">
+                {projectorScene.payload.priority}
+              </div>
+            </div>
+
+            {(projectorScene.payload.eventDate || projectorScene.payload.eventTime || projectorScene.payload.venue) && (
+              <div className="mt-8 flex flex-wrap gap-4 text-lg font-bold text-white/85">
+                {projectorScene.payload.eventDate && <span>{projectorScene.payload.eventDate}</span>}
+                {projectorScene.payload.eventTime && <span>{projectorScene.payload.eventTime}</span>}
+                {projectorScene.payload.venue && <span>{projectorScene.payload.venue}</span>}
+              </div>
+            )}
+
+            {projectorScene.payload.shortText && (
+              <p className="mt-8 text-3xl font-semibold leading-relaxed text-rose-100">
+                {projectorScene.payload.shortText}
+              </p>
+            )}
+
+            {projectorScene.payload.body && (
+              <p className="mt-10 whitespace-pre-wrap text-2xl leading-relaxed text-white/92">
+                {projectorScene.payload.body}
+              </p>
+            )}
+
+            {projectorScene.payload.contactPerson && (
+              <div className="mt-12 border-t border-white/10 pt-6 text-xl font-bold text-amber-200">
+                Contact: {projectorScene.payload.contactPerson}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div
+          className="w-full flex justify-center relative z-10"
           style={{
-            fontSize: `${isObsLyricsOnly ? Math.max(42, Math.round(fontSize * 0.82)) : fontSize}px`,
-            fontFamily,
-            fontWeight: isBold ? 'bold' : 'normal',
-            textTransform: isAllCaps ? 'uppercase' : 'none',
-            textShadow: isObsLyricsOnly
-              ? '0px 4px 18px rgba(0,0,0,0.95), 0px 0px 8px rgba(0,0,0,0.75)'
-              : '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
+            maxWidth: isObsLyricsOnly ? '70%' : '95%',
           }}
         >
-          <span className="whitespace-pre-wrap">{displayedLyrics}</span>
-        </h1>
-      </div>
+          <h1
+            className="text-white text-center font-bold leading-[1.2] tracking-wide"
+            style={{
+              fontSize: `${isObsLyricsOnly ? Math.max(42, Math.round(fontSize * 0.82)) : fontSize}px`,
+              fontFamily,
+              fontWeight: isBold ? 'bold' : 'normal',
+              textTransform: isAllCaps ? 'uppercase' : 'none',
+              textShadow: isObsLyricsOnly
+                ? '0px 4px 18px rgba(0,0,0,0.95), 0px 0px 8px rgba(0,0,0,0.75)'
+                : '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
+            }}
+          >
+            <span className="whitespace-pre-wrap">{displayedLyrics}</span>
+          </h1>
+        </div>
+      )}
     </div>
   );
 }

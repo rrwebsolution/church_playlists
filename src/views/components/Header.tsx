@@ -78,6 +78,30 @@ export const Header = ({
     if (isPptPresentationRoute) {
       return { label: 'PPT Presentation', showInput: false };
     }
+    if (activeMenu === 'service-planner') {
+      return { label: 'Service Planner', showInput: false };
+    }
+    if (activeMenu === 'sermon-notes') {
+      return { label: 'Sermon Notes', showInput: false };
+    }
+    if (activeMenu === 'volunteer-scheduling') {
+      return { label: 'Volunteer Scheduling', showInput: false };
+    }
+    if (activeMenu === 'attendance-tracking') {
+      return { label: 'Attendance Tracking', showInput: false };
+    }
+    if (activeMenu === 'offering-records') {
+      return { label: 'Offering Records', showInput: false };
+    }
+    if (activeMenu === 'member-directory') {
+      return { label: 'Member Directory', showInput: false };
+    }
+    if (activeMenu === 'announcement-manager') {
+      return { label: 'Announcement Manager', showInput: false };
+    }
+    if (activeMenu === 'calendar-planning') {
+      return { label: 'Calendar Planning', showInput: false };
+    }
     if (activeMenu === 'saved' || activeFolderId) {
       if (searchMode === 'youtube') return { placeholder: "Type a few letters to auto-search YouTube...", buttonText: isFetching ? "Searching..." : "Search YT", Icon: Search, showInput: true };
       if (searchMode === 'link') return { placeholder: "Paste YouTube URL here...", buttonText: isFetching ? "Fetching..." : "Add Link", Icon: Plus, showInput: true };
@@ -135,7 +159,7 @@ export const Header = ({
             <Menu className="w-5 h-5" />
           </button>
           <h2 className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-500 hidden sm:block">
-            {isPptPresentationRoute ? "PPT Presentation" : activeMenu === 'saved' ? "Saved Songs" : activeFolderId ? "Folder Explorer" : "Playlist Manager"}
+            {isPptPresentationRoute ? "PPT Presentation" : activeMenu === 'service-planner' ? "Service Planner" : activeMenu === 'sermon-notes' ? "Sermon Notes" : activeMenu === 'volunteer-scheduling' ? "Volunteer Scheduling" : activeMenu === 'attendance-tracking' ? "Attendance Tracking" : activeMenu === 'offering-records' ? "Offering Records" : activeMenu === 'member-directory' ? "Member Directory" : activeMenu === 'announcement-manager' ? "Announcement Manager" : activeMenu === 'calendar-planning' ? "Calendar Planning" : activeMenu === 'saved' ? "Saved Songs" : activeFolderId ? "Folder Explorer" : "Playlist Manager"}
           </h2>
         </div>
 

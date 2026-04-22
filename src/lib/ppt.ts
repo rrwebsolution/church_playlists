@@ -446,11 +446,13 @@ export const exportSlidesToPptx = async ({
   title,
   slides,
   templateId,
+  backgroundImageUrl,
   author = 'Church System',
 }: {
   title: string;
   slides: PresentationSlide[];
   templateId?: string;
+  backgroundImageUrl?: string;
   author?: string;
 }) => {
   const pptx = new PptxGenJS();
@@ -478,6 +480,15 @@ export const exportSlidesToPptx = async ({
         fill: { color: exportTheme.backgroundColor },
         line: { color: exportTheme.backgroundColor },
       });
+      if (backgroundImageUrl) {
+        slide.addImage({
+          data: backgroundImageUrl,
+          x: 0,
+          y: 0,
+          w: 13.333,
+          h: 7.5,
+        });
+      }
       const exportText = (slideData.text || htmlToPlainText(slideData.html)).trim();
       const exportRuns = htmlToPptTextRuns(slideData.html, slideData.format, exportTheme.textColor);
       const hasImage = Boolean(slideData.imageUrl);

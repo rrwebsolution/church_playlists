@@ -10,6 +10,14 @@ const Playlist = lazy(() => import('./views/playlist/Playlist.tsx'));
 const Saved = lazy(() => import('./views/saved/Saved.tsx')); 
 const History = lazy(() => import('./views/history/History.tsx')); 
 const Settings = lazy(() => import('./views/settings/Settings.tsx')); 
+const ServicePlanner = lazy(() => import('./views/service-planner/ServicePlanner.tsx'));
+const SermonNotes = lazy(() => import('./views/sermon-notes/SermonNotes.tsx'));
+const VolunteerScheduling = lazy(() => import('./views/volunteer-scheduling/VolunteerScheduling.tsx'));
+const AttendanceTracking = lazy(() => import('./views/attendance-tracking/AttendanceTracking.tsx'));
+const OfferingRecords = lazy(() => import('./views/offering-records/OfferingRecords.tsx'));
+const MemberDirectory = lazy(() => import('./views/member-directory/MemberDirectory.tsx'));
+const AnnouncementManager = lazy(() => import('./views/announcement-manager/AnnouncementManager.tsx'));
+const CalendarPlanning = lazy(() => import('./views/calendar-planning/CalendarPlanning.tsx'));
 
 // EasyWorship Components
 const EasyWorshipController = lazy(() => import('./views/easyworship/EasyWorshipController.tsx'));
@@ -59,6 +67,70 @@ const routes = [
         element: (
           <Suspense fallback={<Loader />}>
             <History />
+          </Suspense>
+        )
+      },
+      {
+        path: 'service-planner',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <ServicePlanner />
+          </Suspense>
+        )
+      },
+      {
+        path: 'sermon-notes',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <SermonNotes />
+          </Suspense>
+        )
+      },
+      {
+        path: 'volunteer-scheduling',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <VolunteerScheduling />
+          </Suspense>
+        )
+      },
+      {
+        path: 'attendance-tracking',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <AttendanceTracking />
+          </Suspense>
+        )
+      },
+      {
+        path: 'offering-records',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <OfferingRecords />
+          </Suspense>
+        )
+      },
+      {
+        path: 'member-directory',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <MemberDirectory />
+          </Suspense>
+        )
+      },
+      {
+        path: 'announcement-manager',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <AnnouncementManager />
+          </Suspense>
+        )
+      },
+      {
+        path: 'calendar-planning',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <CalendarPlanning />
           </Suspense>
         )
       },

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import JSZip from 'jszip';
 import {
   Presentation, Search, Trash2, CalendarDays,
   Layers, MonitorDot, PlusCircle, Sparkles,
   Edit3, MoreVertical, LayoutPanelLeft, Check, Download, FileUp, PencilLine,
-  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, WandSparkles, X, ImagePlus, LoaderCircle, Save, FileImage
+  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, WandSparkles, X, ImagePlus, LoaderCircle, Save, FileImage,
+  Minus, Plus
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useNavigate, useOutletContext } from 'react-router-dom';
@@ -22,6 +24,12 @@ import {
   type PresentationSlide,
   type SlideTextAlign,
 } from '@/lib/ppt';
+import {
+  PRESENTATION_CANVAS_CLASS,
+  PRESENTATION_CANVAS_FRAME_CLASS,
+  PRESENTATION_CANVAS_MEDIA_CLASS,
+  PRESENTATION_CANVAS_OVERLAY_CLASS,
+} from './components/PresentationSlideCanvas';
 
 export const PPT_TEMPLATES = [
   { id: 'classic-dark', name: 'Classic Dark', bg: 'bg-zinc-950', text: 'text-white', accent: 'text-indigo-400', font: 'font-sans' },
@@ -65,7 +73,12 @@ const createPresentationId = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 const FONT_OPTIONS = ['Arial Black', 'Arial', 'Calibri', 'Georgia', 'Times New Roman', 'Verdana', 'Aptos'];
-const FONT_SIZE_OPTIONS = [18, 24, 28, 32, 36, 44, 54, 64];
+const MIN_FONT_SIZE = 18;
+const MAX_FONT_SIZE = 64;
+const FONT_SIZE_OPTIONS = Array.from(
+  { length: MAX_FONT_SIZE - MIN_FONT_SIZE + 1 },
+  (_, index) => MIN_FONT_SIZE + index
+);
 const TEMPLATE_EXPORT_LOOKS: Record<string, { background: string; text: string }> = {
   'classic-dark': { background: '#09090B', text: '#FFFFFF' },
   'modern-light': { background: '#FAFAFA', text: '#18181B' },
@@ -208,12 +221,18 @@ const editorCommandToAlign: Partial<Record<string, SlideTextAlign>> = {
   justifyRight: 'right',
   justifyFull: 'justify',
 };
+const editorCommandToFormatKey: Partial<Record<string, keyof PresentationSlide['format']>> = {
+  bold: 'bold',
+  italic: 'italic',
+  underline: 'underline',
+};
 
 export default function Pptpresenatation() {
   const { presentations, setPresentations } = useOutletContext<any>();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const templateBgInputRef = useRef<HTMLInputElement>(null);
   const presentationListRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const slideEditorRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -223,6 +242,7 @@ export default function Pptpresenatation() {
   const [generateTitle, setGenerateTitle] = useState('');
   const [slidesToGenerate, setSlidesToGenerate] = useState<PresentationSlide[]>([createEmptySlide()]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(PPT_TEMPLATES[0].id);
+  const [selectedBackgroundImageUrl, setSelectedBackgroundImageUrl] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -322,6 +342,7 @@ export default function Pptpresenatation() {
     setActivePreviewIndex(0);
     setEditorMode('create');
     setSelectedTemplateId(PPT_TEMPLATES[0].id);
+    setSelectedBackgroundImageUrl('');
   };
 
   const buildPresentationData = (slides: PresentationSlide[], title: string, sourceType: PptPresentationFile['sourceType'], originalFileName?: string): PptPresentationFile => ({
@@ -333,6 +354,7 @@ export default function Pptpresenatation() {
     sourceText: slidesToSourceText(slides),
     slideData: serializeSlides(slides),
     templateId: selectedTemplateId,
+    backgroundImageUrl: selectedBackgroundImageUrl || undefined,
     sourceType,
     originalFileName,
   });
@@ -352,6 +374,7 @@ export default function Pptpresenatation() {
     setEditingId(p.id);
     setGenerateTitle(p.name);
     setSelectedTemplateId(p.templateId || PPT_TEMPLATES[0].id);
+    setSelectedBackgroundImageUrl(p.backgroundImageUrl || '');
     setSlidesToGenerate(restoredSlides.length > 0 ? restoredSlides : [createEmptySlide()]);
     setEditorMode(p.sourceType === 'uploaded' ? 'upload' : 'create');
     setActivePreviewIndex(0);
@@ -567,7 +590,7 @@ export default function Pptpresenatation() {
     const finalTitle = generateTitle.trim() || validSlides[0].text.split('\n')[0].substring(0, 40) || 'Presentation';
     setIsExporting(true);
     try {
-      await exportSlidesToPptx({ title: finalTitle, slides: validSlides, templateId: selectedTemplateId });
+      await exportSlidesToPptx({ title: finalTitle, slides: validSlides, templateId: selectedTemplateId, backgroundImageUrl: selectedBackgroundImageUrl || undefined });
       const presentationData = buildPresentationData(validSlides, finalTitle, toSourceType(editorMode));
       upsertPresentation(presentationData, 'PPT file downloaded!');
     } catch {
@@ -577,48 +600,166 @@ export default function Pptpresenatation() {
     }
   };
 
-  const handleExportJpg = async () => {
-    const activeSlide = slidesToGenerate[activePreviewIndex];
-    if (!activeSlide) {
-      Toast.fire({ icon: 'warning', title: 'Select a slide first.' });
-      return;
-    }
+  const readBlobAsDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Unable to read image data.'));
+    };
+    reader.onerror = () => reject(new Error('Unable to read image data.'));
+    reader.readAsDataURL(blob);
+  });
 
-    if (!(activeSlide.text || htmlToPlainText(activeSlide.html)).trim() && !activeSlide.imageUrl) {
-      Toast.fire({ icon: 'warning', title: 'Active slide is empty.' });
-      return;
-    }
+  const getExportSafeImageUrl = async (imageUrl?: string) => {
+    if (!imageUrl) return null;
+    if (imageUrl.startsWith('data:')) return imageUrl;
 
-    setIsExportingJpg(true);
+    try {
+      const response = await fetch(imageUrl, { mode: 'cors' });
+      if (!response.ok) {
+        throw new Error('Image request failed.');
+      }
+
+      const blob = await response.blob();
+      return await readBlobAsDataUrl(blob);
+    } catch {
+      return null;
+    }
+  };
+
+  const escapeSvgText = (value: string) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+  const wrapSvgText = (text: string, maxCharsPerLine: number) => {
+    const normalizedLines = text.split('\n');
+    const wrappedLines: string[] = [];
+
+    normalizedLines.forEach((line) => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) {
+        wrappedLines.push('');
+        return;
+      }
+
+      const words = trimmedLine.split(/\s+/);
+      let currentLine = '';
+
+      words.forEach((word) => {
+        const candidate = currentLine ? `${currentLine} ${word}` : word;
+        if (candidate.length <= maxCharsPerLine || !currentLine) {
+          currentLine = candidate;
+          return;
+        }
+
+        wrappedLines.push(currentLine);
+        currentLine = word;
+      });
+
+      if (currentLine) {
+        wrappedLines.push(currentLine);
+      }
+    });
+
+    return wrappedLines;
+  };
+
+  const buildSlideJpgDataUrl = async (slide: PresentationSlide, slideIndex: number) => {
+    let svgUrl: string | null = null;
 
     try {
       const look = TEMPLATE_EXPORT_LOOKS[selectedTemplateId] || TEMPLATE_EXPORT_LOOKS['classic-dark'];
       const width = 1600;
       const height = 900;
-      const imageMarkup = activeSlide.imageUrl
-        ? `<img src="${activeSlide.imageUrl}" style="width:100%;max-height:42%;object-fit:contain;border-radius:20px;background:rgba(0,0,0,.25);" />`
+      const paddingX = 76;
+      const paddingY = 68;
+      const contentWidth = width - (paddingX * 2);
+      const contentHeight = height - (paddingY * 2);
+      const [exportBackgroundImageUrl, exportSlideImageUrl] = await Promise.all([
+        getExportSafeImageUrl(selectedBackgroundImageUrl || undefined),
+        getExportSafeImageUrl(slide.imageUrl),
+      ]);
+      const skippedExternalImages = Boolean(
+        (selectedBackgroundImageUrl && !exportBackgroundImageUrl) ||
+        (slide.imageUrl && !exportSlideImageUrl)
+      );
+      const fontSize = Math.max(32, slide.format.fontSize * 2);
+      const lineHeight = Math.round(fontSize * 1.22);
+      const plainText = (slide.text || htmlToPlainText(slide.html)).replace(/\r\n/g, '\n').trim();
+      const maxCharsPerLine = Math.max(12, Math.floor(contentWidth / (fontSize * 0.55)));
+      const wrappedLines = wrapSvgText(plainText, maxCharsPerLine);
+      const lineCount = Math.max(1, wrappedLines.length);
+      const textBlockHeight = lineCount * lineHeight;
+      const imageGap = exportSlideImageUrl ? 34 : 0;
+      const imageHeight = exportSlideImageUrl ? Math.min(contentHeight * 0.42, 320) : 0;
+      const totalContentHeight = imageHeight + imageGap + textBlockHeight;
+      const startY = Math.max(paddingY + (fontSize * 0.9), ((height - totalContentHeight) / 2) + fontSize);
+      const imageY = startY - fontSize;
+      const textStartY = imageY + imageHeight + imageGap + fontSize;
+      const textAnchor = slide.format.align === 'center'
+        ? 'middle'
+        : slide.format.align === 'right'
+          ? 'end'
+          : 'start';
+      const textX = slide.format.align === 'center'
+        ? width / 2
+        : slide.format.align === 'right'
+          ? width - paddingX
+          : paddingX;
+      const underlineDecoration = slide.format.underline ? 'text-decoration="underline"' : '';
+      const fontStyle = slide.format.italic ? 'italic' : 'normal';
+      const fontWeight = slide.format.bold ? 800 : 500;
+      const imageX = paddingX;
+      const imageWidth = contentWidth;
+      const imageMarkup = exportSlideImageUrl
+        ? `
+          <rect x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" rx="24" ry="24" fill="rgba(0,0,0,0.22)" />
+          <image href="${exportSlideImageUrl}" x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" preserveAspectRatio="xMidYMid meet" />
+        `
         : '';
-
-      const slideHtml = `
-        <div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;display:flex;flex-direction:column;gap:24px;padding:48px;box-sizing:border-box;background:${look.background};color:${look.text};font-family:${activeSlide.format.fontFamily}, Arial, sans-serif;">
-          ${imageMarkup}
-          <div style="flex:1;overflow:hidden;font-size:${Math.max(32, activeSlide.format.fontSize * 2)}px;line-height:1.2;text-align:${activeSlide.format.align};font-weight:${activeSlide.format.bold ? 800 : 500};font-style:${activeSlide.format.italic ? 'italic' : 'normal'};text-decoration:${activeSlide.format.underline ? 'underline' : 'none'};word-break:break-word;">
-            ${activeSlide.html || plainTextToHtml(activeSlide.text || '')}
-          </div>
-        </div>
-      `;
+      const textMarkup = wrappedLines.length > 0
+        ? wrappedLines.map((line, lineIndex) => (
+            `<tspan x="${textX}" y="${textStartY + (lineIndex * lineHeight)}">${line ? escapeSvgText(line) : '&#160;'}</tspan>`
+          )).join('')
+        : `<tspan x="${textX}" y="${textStartY}">&#160;</tspan>`;
 
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-          <foreignObject width="100%" height="100%">${slideHtml}</foreignObject>
+          <rect width="${width}" height="${height}" fill="${look.background}" />
+          ${exportBackgroundImageUrl ? `<image href="${exportBackgroundImageUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" />` : ''}
+          ${exportBackgroundImageUrl ? `<rect width="${width}" height="${height}" fill="rgba(0,0,0,0.18)" />` : ''}
+          ${imageMarkup}
+          <text
+            x="${textX}"
+            y="${textStartY}"
+            fill="${look.text}"
+            font-size="${fontSize}"
+            font-family="${escapeSvgText(slide.format.fontFamily || 'Arial')}, Arial, sans-serif"
+            font-weight="${fontWeight}"
+            font-style="${fontStyle}"
+            text-anchor="${textAnchor}"
+            ${underlineDecoration}
+          >${textMarkup}</text>
         </svg>
       `;
-      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+      svgUrl = URL.createObjectURL(svgBlob);
       const image = new Image();
 
       await new Promise<void>((resolve, reject) => {
+        if (!svgUrl) {
+          reject(new Error('Unable to prepare slide image.'));
+          return;
+        }
+        image.decoding = 'sync';
         image.onload = () => resolve();
-        image.onerror = () => reject(new Error('Unable to render slide image.'));
+        image.onerror = () => reject(new Error(`Unable to render slide ${slideIndex + 1}.`));
         image.src = svgUrl;
       });
 
@@ -634,13 +775,52 @@ export default function Pptpresenatation() {
       context.fillRect(0, 0, width, height);
       context.drawImage(image, 0, 0, width, height);
 
-      const jpgUrl = canvas.toDataURL('image/jpeg', 0.95);
-      const link = document.createElement('a');
-      link.href = jpgUrl;
-      link.download = `${(generateTitle || 'slide').replace(/[^\w-]+/g, '_')}-slide-${activePreviewIndex + 1}.jpg`;
-      link.click();
+      return {
+        jpgUrl: canvas.toDataURL('image/jpeg', 0.95),
+        skippedExternalImages,
+      };
+    } finally {
+      if (svgUrl) {
+        URL.revokeObjectURL(svgUrl);
+      }
+    }
+  };
 
-      Toast.fire({ icon: 'success', title: 'JPG slide downloaded!' });
+  const handleExportJpg = async () => {
+    if (slidesToGenerate.length === 0) {
+      Toast.fire({ icon: 'warning', title: 'Add at least one slide first.' });
+      return;
+    }
+
+    setIsExportingJpg(true);
+
+    try {
+      const exportZip = new JSZip();
+      let skippedExternalImages = false;
+
+      for (let index = 0; index < slidesToGenerate.length; index += 1) {
+        const { jpgUrl, skippedExternalImages: skippedForSlide } = await buildSlideJpgDataUrl(slidesToGenerate[index], index);
+        skippedExternalImages = skippedExternalImages || skippedForSlide;
+        const base64Data = jpgUrl.split(',')[1] || '';
+        exportZip.file(
+          `${(generateTitle || 'presentation').replace(/[^\w-]+/g, '_')}-slide-${index + 1}.jpg`,
+          base64Data,
+          { base64: true }
+        );
+      }
+
+      const zipBlob = await exportZip.generateAsync({ type: 'blob' });
+      const zipUrl = URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = zipUrl;
+      link.download = `${(generateTitle || 'presentation').replace(/[^\w-]+/g, '_')}-slides-jpg.zip`;
+      link.click();
+      URL.revokeObjectURL(zipUrl);
+
+      Toast.fire({
+        icon: skippedExternalImages ? 'warning' : 'success',
+        title: skippedExternalImages ? 'Slides downloaded with some blocked images skipped.' : 'All slide JPGs downloaded!',
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'JPG export failed.';
       Toast.fire({ icon: 'error', title: message });
@@ -706,6 +886,13 @@ export default function Pptpresenatation() {
     )));
   };
 
+  const adjustSlideFontSize = (id: number, delta: number) => {
+    updateSlideFormat(id, (format) => ({
+      ...format,
+      fontSize: Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, format.fontSize + delta)),
+    }));
+  };
+
   const runEditorCommand = (id: number, command: string, value?: string) => {
     const target = slideEditorRefs.current[id];
     if (!target) return;
@@ -718,6 +905,12 @@ export default function Pptpresenatation() {
     const nextAlign = editorCommandToAlign[command];
     if (nextAlign) {
       updateSlideFormat(id, (format) => ({ ...format, align: nextAlign }));
+    }
+
+    const nextFormatKey = editorCommandToFormatKey[command];
+    if (nextFormatKey) {
+      const isActive = document.queryCommandState(command);
+      updateSlideFormat(id, (format) => ({ ...format, [nextFormatKey]: isActive }));
     }
   };
 
@@ -735,6 +928,18 @@ export default function Pptpresenatation() {
     reader.readAsDataURL(file);
   };
 
+  const handleTemplateBackgroundUpload = (file?: File) => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const imageUrl = typeof reader.result === 'string' ? reader.result : '';
+      setSelectedBackgroundImageUrl(imageUrl);
+      Toast.fire({ icon: 'success', title: 'Template background image added.' });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const removeSlide = (id: number) => {
     setSlidesToGenerate(prev => {
       if (prev.length === 1) return [createEmptySlide()];
@@ -745,6 +950,7 @@ export default function Pptpresenatation() {
   };
 
   const selectedTemplate = PPT_TEMPLATES.find((template) => template.id === selectedTemplateId) || PPT_TEMPLATES[0];
+  const templateBackgroundOverlay = selectedBackgroundImageUrl ? 'bg-black/25' : 'bg-transparent';
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-32 px-4 relative min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans">
@@ -759,8 +965,28 @@ export default function Pptpresenatation() {
         <input type="file" accept=".ppt,.pptx" ref={fileInputRef} onChange={handleUploadFile} className="hidden" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start mt-10">
-        <div ref={editorRef} className={`lg:col-span-1 p-6 md:p-8 rounded-[2.5rem] bg-white/70 dark:bg-zinc-900/70 border border-zinc-200 dark:border-white/5 shadow-lg backdrop-blur-md flex flex-col justify-start min-h-160 transition-all ${editingId ? 'ring-2 ring-indigo-500' : ''}`}>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.9fr)] gap-8 items-start mt-10">
+        <div ref={editorRef} className={`p-6 md:p-8 rounded-[2.5rem] bg-white/70 dark:bg-zinc-900/70 border border-zinc-200 dark:border-white/5 shadow-lg backdrop-blur-md flex flex-col justify-start min-h-160 transition-all ${editingId ? 'ring-2 ring-indigo-500' : ''}`}>
+          <div className="mb-6 rounded-[2rem] border border-zinc-200/80 dark:border-zinc-800 bg-linear-to-r from-white to-zinc-50 dark:from-zinc-900 dark:to-zinc-950 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500 mb-2">Create Presentation</p>
+                <h2 className="text-2xl font-black text-zinc-900 dark:text-zinc-100">Build slides for worship, sermons, and events</h2>
+                <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                  Create manually, generate from outline, or upload a PowerPoint file and continue editing from here.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                  {slidesToGenerate.length} Slides
+                </div>
+                <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                  {editorMode}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-col gap-4 mb-6">
             <div className="flex justify-between items-center">
               <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
@@ -829,61 +1055,98 @@ export default function Pptpresenatation() {
 
           <div className="mb-6">
             <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-3 block">Template Style</label>
+            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-zinc-500">Slide canvas uses Microsoft PowerPoint widescreen 16:9</p>
             <div className="flex items-center gap-3 overflow-x-auto pb-2 no-scrollbar">
               {PPT_TEMPLATES.map((tpl) => (
-                <button key={tpl.id} onClick={() => setSelectedTemplateId(tpl.id)} className={`shrink-0 p-1 rounded-2xl border-2 transition-all ${selectedTemplateId === tpl.id ? 'border-indigo-500 scale-105' : 'border-transparent opacity-50'}`}>
-                  <div className={`w-16 h-10 rounded-xl ${tpl.bg} border border-white/10`} />
+                <button
+                  key={tpl.id}
+                  onClick={() => setSelectedTemplateId(tpl.id)}
+                  className={`shrink-0 rounded-2xl border-2 p-2 transition-all ${
+                    selectedTemplateId === tpl.id
+                      ? 'border-indigo-500 bg-indigo-50/80 dark:bg-indigo-950/20 scale-105 shadow-sm'
+                      : 'border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/80 hover:border-indigo-300'
+                  }`}
+                >
+                  <div className={`w-16 h-10 rounded-xl ${tpl.bg} border border-white/20`} />
                 </button>
               ))}
+            </div>
+            <div className="mt-4 rounded-[1.5rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/80 dark:bg-zinc-900/60 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400">Template Background Image</p>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Insert an image to use as the slide background for this presentation.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={templateBgInputRef}
+                    onChange={(e) => {
+                      handleTemplateBackgroundUpload(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => templateBgInputRef.current?.click()}
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-indigo-200 bg-white px-4 py-3 text-[11px] font-black uppercase tracking-widest text-indigo-600 transition-all hover:bg-indigo-50 dark:border-indigo-500/20 dark:bg-zinc-950 dark:text-indigo-300 dark:hover:bg-indigo-950/20"
+                  >
+                    <ImagePlus className="w-4 h-4" /> Upload BG
+                  </button>
+                  {selectedBackgroundImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBackgroundImageUrl('')}
+                      className="flex items-center justify-center gap-2 rounded-2xl border border-red-200 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-red-500 transition-all hover:bg-red-50 dark:border-red-500/20 dark:hover:bg-red-950/20"
+                    >
+                      <X className="w-4 h-4" /> Remove BG
+                    </button>
+                  )}
+                </div>
+              </div>
+              {selectedBackgroundImageUrl && (
+                <div className="mt-4 overflow-hidden rounded-[1.25rem] border border-zinc-200 dark:border-zinc-800">
+                  <img src={selectedBackgroundImageUrl} alt="Template background preview" className="h-32 w-full object-cover" />
+                </div>
+              )}
             </div>
           </div>
 
           <input type="text" value={generateTitle} onChange={(e) => setGenerateTitle(e.target.value)} placeholder="Presentation Title..." className="w-full px-5 py-3.5 bg-white dark:bg-black/40 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none text-zinc-900 dark:text-zinc-100 font-bold focus:border-indigo-500/50 mb-6 transition-all" />
 
-          <div className="flex-1 space-y-6 overflow-y-auto custom-scrollbar pr-2 mb-4 max-h-120">
-            {slidesToGenerate.map((slide, index) => (
-              <div key={slide.id} className="flex items-start gap-3 relative group/slide animate-in fade-in slide-in-from-bottom-2">
-                <button onClick={() => setActivePreviewIndex(index)} className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black transition-all ${activePreviewIndex === index ? 'bg-indigo-500 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'}`}>{index + 1}</button>
-                <div className="w-full space-y-3">
+          <div className="flex-1 flex flex-col gap-4 mb-4">
+            {/* All slides stacked vertically — each slide has its own controls */}
+            <div className="space-y-4">
+              {slidesToGenerate.map((slide, index) => (
+                <div key={slide.id} className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${activePreviewIndex === index ? 'text-indigo-500' : 'text-zinc-400'}`}>Slide {index + 1}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{slide.text.trim() ? `${slide.text.trim().split(/\s+/).length} words` : 'Empty'}</span>
+                      <button onClick={() => removeSlide(slide.id)} className="flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all"><Trash2 className="w-3 h-3" /> Remove</button>
+                    </div>
+                  </div>
+
                   <div className="rounded-2xl border-2 border-zinc-100 dark:border-zinc-800 bg-white dark:bg-black/40 shadow-sm overflow-hidden">
-                    <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 dark:border-zinc-800 px-3 py-3 bg-zinc-50/80 dark:bg-zinc-900/70">
-                      <select
-                        value={slide.format.fontFamily}
-                        onChange={(e) => updateSlideFormat(slide.id, (format) => ({ ...format, fontFamily: e.target.value }))}
-                        className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-xs font-bold text-zinc-700 dark:text-zinc-200 outline-none"
-                      >
-                        {FONT_OPTIONS.map((font) => (
-                          <option key={font} value={font}>{font}</option>
-                        ))}
+                    <div className="flex flex-wrap items-center gap-2 px-3 py-3 bg-zinc-50/80 dark:bg-zinc-900/70">
+                      <select value={slide.format.fontFamily} onChange={(e) => updateSlideFormat(slide.id, (f) => ({ ...f, fontFamily: e.target.value }))} className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-xs font-bold text-zinc-700 dark:text-zinc-200 outline-none">
+                        {FONT_OPTIONS.map((font) => <option key={font} value={font}>{font}</option>)}
                       </select>
-                      <select
-                        value={slide.format.fontSize}
-                        onChange={(e) => updateSlideFormat(slide.id, (format) => ({ ...format, fontSize: Number(e.target.value) }))}
-                        className="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-xs font-bold text-zinc-700 dark:text-zinc-200 outline-none"
-                      >
-                        {FONT_SIZE_OPTIONS.map((size) => (
-                          <option key={size} value={size}>{size}</option>
-                        ))}
-                      </select>
-                      <button onClick={() => runEditorCommand(slide.id, 'bold')} className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20" title="Bold">
-                        <Bold className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => runEditorCommand(slide.id, 'italic')} className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20" title="Italic">
-                        <Italic className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => runEditorCommand(slide.id, 'underline')} className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20" title="Underline">
-                        <Underline className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
+                        <button onClick={() => adjustSlideFontSize(slide.id, -1)} disabled={slide.format.fontSize <= MIN_FONT_SIZE} className="px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 disabled:opacity-40 disabled:hover:bg-transparent" title="Decrease Font Size"><Minus className="w-4 h-4" /></button>
+                        <select value={slide.format.fontSize} onChange={(e) => updateSlideFormat(slide.id, (f) => ({ ...f, fontSize: Number(e.target.value) }))} className="border-x border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-center text-xs font-bold text-zinc-700 dark:text-zinc-200 outline-none">
+                          {FONT_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+                        </select>
+                        <button onClick={() => adjustSlideFontSize(slide.id, 1)} disabled={slide.format.fontSize >= MAX_FONT_SIZE} className="px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 disabled:opacity-40 disabled:hover:bg-transparent" title="Increase Font Size"><Plus className="w-4 h-4" /></button>
+                      </div>
+                      <button onClick={() => runEditorCommand(slide.id, 'bold')} className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20" title="Bold"><Bold className="w-4 h-4" /></button>
+                      <button onClick={() => runEditorCommand(slide.id, 'italic')} className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20" title="Italic"><Italic className="w-4 h-4" /></button>
+                      <button onClick={() => runEditorCommand(slide.id, 'underline')} className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20" title="Underline"><Underline className="w-4 h-4" /></button>
                       <div className="flex items-center gap-2">
                         {alignButtons.map(({ value, icon: Icon, label }) => (
-                          <button
-                            key={value}
-                            onClick={() => runEditorCommand(slide.id, value === 'left' ? 'justifyLeft' : value === 'center' ? 'justifyCenter' : value === 'right' ? 'justifyRight' : 'justifyFull')}
-                            className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20"
-                            title={label}
-                          >
-                            <Icon className="w-4 h-4" />
-                          </button>
+                          <button key={value} onClick={() => runEditorCommand(slide.id, value === 'left' ? 'justifyLeft' : value === 'center' ? 'justifyCenter' : value === 'right' ? 'justifyRight' : 'justifyFull')} className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20" title={label}><Icon className="w-4 h-4" /></button>
                         ))}
                       </div>
                       <label className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 cursor-pointer">
@@ -891,49 +1154,44 @@ export default function Pptpresenatation() {
                         <ImagePlus className="w-4 h-4" />
                       </label>
                     </div>
-                    {slide.imageUrl && (
-                      <div className="px-5 pt-5">
-                        <div className="relative rounded-[1.5rem] overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900">
-                          <img src={slide.imageUrl} alt={`Slide ${index + 1}`} className="w-full aspect-video object-contain bg-black/40" />
-                          <button onClick={() => setSlidesToGenerate((prev) => prev.map((item) => item.id === slide.id ? { ...item, imageUrl: undefined } : item))} className="absolute top-3 right-3 rounded-xl bg-black/60 text-white px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 transition-all">
-                            Remove Image
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    <div
-                      contentEditable
-                      suppressContentEditableWarning
-                      ref={(node) => {
-                        slideEditorRefs.current[slide.id] = node;
-                        if (node && document.activeElement !== node) {
-                          const nextHtml = slide.html || plainTextToHtml(slide.text);
-                          if (node.innerHTML !== nextHtml) {
-                            node.innerHTML = nextHtml;
-                          }
-                        }
-                      }}
-                      onInput={(e) => updateSlideContent(slide.id, e.currentTarget.innerHTML)}
-                      onFocus={() => setActivePreviewIndex(index)}
-                      className="w-full min-h-52 p-5 outline-none text-zinc-800 dark:text-zinc-100 leading-relaxed whitespace-pre-wrap"
-                      style={{
-                        fontSize: `${slide.format.fontSize}px`,
-                        fontFamily: slide.format.fontFamily,
-                        textAlign: slide.format.align,
-                      }}
-                    />
                   </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] uppercase tracking-widest font-black text-zinc-400">
-                      {slide.text.trim() ? `${slide.text.trim().split(/\s+/).length} words` : 'Empty slide'}
-                    </p>
-                    <button onClick={() => removeSlide(slide.id)} className="flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 transition-all">
-                      <Trash2 className="w-3.5 h-3.5" /> Remove
-                    </button>
+
+                  {/* Editable canvas — aspect-video, same size as Slides Preview */}
+                  <div
+                    onClick={() => setActivePreviewIndex(index)}
+                    className={`${PRESENTATION_CANVAS_CLASS} cursor-text transition-all ${selectedTemplate.bg} ${selectedTemplate.text} ${selectedTemplate.font} ${activePreviewIndex === index ? 'ring-2 ring-indigo-500 shadow-lg shadow-indigo-500/10' : ''}`}
+                  >
+                    {selectedBackgroundImageUrl && (
+                      <img src={selectedBackgroundImageUrl} alt="Slide background" className="absolute inset-0 h-full w-full object-cover" />
+                    )}
+                    <div className={`${PRESENTATION_CANVAS_OVERLAY_CLASS} ${templateBackgroundOverlay}`} />
+                    <div className={`${PRESENTATION_CANVAS_FRAME_CLASS} gap-4`}>
+                      {slide.imageUrl && (
+                        <div className={`${PRESENTATION_CANVAS_MEDIA_CLASS} border border-white/15 bg-black/20 relative`}>
+                          <img src={slide.imageUrl} alt={`Slide ${index + 1}`} className="h-full w-full object-contain bg-black/40" />
+                          <button onClick={(e) => { e.stopPropagation(); setSlidesToGenerate((prev) => prev.map((s) => s.id === slide.id ? { ...s, imageUrl: undefined } : s)); }} className="absolute top-2 right-2 rounded-xl bg-black/60 text-white px-3 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 transition-all">Remove Image</button>
+                        </div>
+                      )}
+                      <div
+                        contentEditable
+                        suppressContentEditableWarning
+                        ref={(node) => {
+                          slideEditorRefs.current[slide.id] = node;
+                          if (node && document.activeElement !== node) {
+                            const nextHtml = slide.html || plainTextToHtml(slide.text);
+                            if (node.innerHTML !== nextHtml) node.innerHTML = nextHtml;
+                          }
+                        }}
+                        onFocus={() => setActivePreviewIndex(index)}
+                        onInput={(e) => updateSlideContent(slide.id, e.currentTarget.innerHTML)}
+                        className={`w-full min-h-0 flex-1 overflow-hidden bg-transparent outline-none leading-[1.1] whitespace-pre-wrap ${selectedTemplate.text} ${selectedTemplate.font}`}
+                        style={{ fontSize: `${slide.format.fontSize}px`, fontFamily: slide.format.fontFamily, textAlign: slide.format.align }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-auto">
@@ -953,119 +1211,130 @@ export default function Pptpresenatation() {
             </button>
           </div>
 
-          <div className="mt-8 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/90 dark:bg-black/20 p-5">
-            <div className="flex items-center justify-between gap-4 mb-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-400">Slides Preview</p>
-                <h4 className="text-lg font-black text-zinc-900 dark:text-zinc-100">Visible below for both upload and generate</h4>
-              </div>
-              <div className="rounded-2xl bg-white dark:bg-zinc-900 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-500 border border-zinc-200 dark:border-zinc-800">
-                {validSlides.length} Ready
-              </div>
-            </div>
-
-            {slidesToGenerate.length === 0 ? (
-              <div className="py-16 text-center opacity-50 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[2rem]">
-                <Presentation className="w-10 h-10 mx-auto mb-3 text-zinc-400" />
-                <p className="font-black uppercase tracking-widest text-xs text-zinc-500">No slides yet</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {slidesToGenerate.map((slide, index) => (
-                  <button key={slide.id} onClick={() => setActivePreviewIndex(index)} className={`text-left rounded-[1.75rem] border p-4 transition-all ${activePreviewIndex === index ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20 shadow-lg' : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-indigo-300'}`}>
-                    <div className={`aspect-video rounded-[1.25rem] p-4 flex flex-col overflow-hidden gap-3 ${selectedTemplate.bg} ${selectedTemplate.text} ${selectedTemplate.font}`}>
-                      {slide.imageUrl && <img src={slide.imageUrl} alt={`Slide ${index + 1}`} className="w-full max-h-[42%] object-contain rounded-lg bg-black/30" />}
-                      <div
-                        className="w-full flex-1 overflow-hidden leading-relaxed whitespace-pre-wrap wrap-break-word"
-                        style={{
-                          fontSize: `${Math.max(12, slide.format.fontSize / 2.2)}px`,
-                          fontFamily: slide.format.fontFamily,
-                          textAlign: slide.format.align,
-                        }}
-                        dangerouslySetInnerHTML={{ __html: slide.html || plainTextToHtml(slide.text || 'Empty slide') }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Slide {index + 1}</span>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500">{slide.text.trim() ? 'Ready' : 'Draft'}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
-        <div className="lg:col-span-1 space-y-6">
-          <div className="relative w-full group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search presentations..." className="w-full pl-11 pr-11 py-3.5 bg-white dark:bg-zinc-900 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none text-sm font-semibold transition-all shadow-sm" />
-          </div>
+        <div className="xl:sticky xl:top-6">
+          <div className="flex flex-col gap-4 rounded-[2.5rem] border border-zinc-200 dark:border-white/5 bg-white/70 dark:bg-zinc-900/70 p-6 md:p-8 shadow-lg backdrop-blur-md">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500">Presentation Files</p>
+                <h3 className="text-xl font-black text-zinc-900 dark:text-zinc-100">Saved presentations</h3>
+              </div>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Search, reopen, rename, or delete your uploaded and generated presentation files here.
+              </p>
+            </div>
 
-          <div ref={presentationListRef} className="space-y-12">
-            {presentations.length === 0 ? (
-              <div className="py-20 text-center opacity-40 px-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[3rem]">
-                <Presentation className="w-12 h-12 mx-auto mb-4 text-zinc-400" /><p className="font-black uppercase tracking-widest text-xs text-zinc-500">No presentations yet</p>
-              </div>
-            ) : !hasSearchResults && searchQuery !== '' ? (
-              <div className="py-20 text-center opacity-40 px-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[3rem] animate-in fade-in zoom-in-95">
-                <Search className="w-12 h-12 mx-auto mb-4 text-zinc-400" />
-                <p className="font-black uppercase tracking-widest text-xs text-zinc-500">No matching presentations found</p>
-                <button onClick={() => setSearchQuery('')} className="mt-4 text-[10px] font-bold text-indigo-500 uppercase hover:underline">Clear search query</button>
-              </div>
-            ) : (
-              Object.entries(filteredAndCategorizedPresentations as Record<string, PptPresentationFile[]>).map(([label, groupPresentations]) => (
-                groupPresentations.length > 0 && (
-                  <div key={label} className="animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex items-center gap-4 mb-6 px-2">
-                      <CalendarDays className="w-5 h-5 text-indigo-600" />
-                      <h3 className="text-lg font-black uppercase tracking-widest">{label}</h3>
-                      <div className="h-px bg-zinc-200 dark:bg-zinc-800 flex-1 ml-2"></div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                      {groupPresentations.map((p: PptPresentationFile) => (
-                        <div key={p.id} className="group flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-3xl p-6 hover:border-indigo-500 hover:shadow-2xl transition-all relative cursor-pointer" onClick={() => renamingId !== p.id && navigate(`/app/ppt-presentation/${p.id}`)}>
-                          <div className="flex justify-between items-start mb-4 relative z-30">
-                            <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl"><Presentation className="w-7 h-7" /></div>
-                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                              <button onClick={(e) => { e.stopPropagation(); handleDelete(p); }} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
-                              <div
-                                className="relative"
-                                ref={activeMenuId === p.id ? activeMenuRef : null}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button onClick={(e) => handleToggleCardMenu(e, p.id)} className={`p-2 rounded-xl transition-all ${activeMenuId === p.id ? 'bg-indigo-500 text-white' : 'text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}><MoreVertical className="w-4.5 h-4.5" /></button>
-                                {activeMenuId === p.id && (
-                                  <div className="absolute top-full right-0 mt-2 w-44 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl shadow-2xl z-50 py-2 animate-in slide-in-from-top-2">
-                                    <button onClick={(e) => { e.stopPropagation(); handleRenameClick(p); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all"><Edit3 className="w-4 h-4 text-indigo-500" /> Rename Title</button>
-                                    <button onClick={(e) => { e.stopPropagation(); handleEditSlides(p); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all"><LayoutPanelLeft className="w-4 h-4 text-purple-500" /> Edit Slide Text</button>
-                                  </div>
-                                )}
+            <div className="relative w-full group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search presentations..." className="w-full pl-11 pr-11 py-3.5 bg-white dark:bg-zinc-900 border-2 border-zinc-100 dark:border-zinc-800 rounded-2xl outline-none text-sm font-semibold transition-all shadow-sm" />
+            </div>
+
+            <div ref={presentationListRef} className="space-y-10 max-h-[calc(100vh-10rem)] overflow-y-auto pr-1 custom-scrollbar">
+              {presentations.length === 0 ? (
+                <div className="py-20 text-center opacity-40 px-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[3rem]">
+                  <Presentation className="w-12 h-12 mx-auto mb-4 text-zinc-400" /><p className="font-black uppercase tracking-widest text-xs text-zinc-500">No presentations yet</p>
+                </div>
+              ) : !hasSearchResults && searchQuery !== '' ? (
+                <div className="py-20 text-center opacity-40 px-10 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-[3rem] animate-in fade-in zoom-in-95">
+                  <Search className="w-12 h-12 mx-auto mb-4 text-zinc-400" />
+                  <p className="font-black uppercase tracking-widest text-xs text-zinc-500">No matching presentations found</p>
+                  <button onClick={() => setSearchQuery('')} className="mt-4 text-[10px] font-bold text-indigo-500 uppercase hover:underline">Clear search query</button>
+                </div>
+              ) : (
+                Object.entries(filteredAndCategorizedPresentations as Record<string, PptPresentationFile[]>).map(([label, groupPresentations]) => (
+                  groupPresentations.length > 0 && (
+                    <div key={label} className="animate-in fade-in slide-in-from-bottom-4">
+                      <div className="flex items-center gap-4 mb-6 px-2">
+                        <CalendarDays className="w-5 h-5 text-indigo-600" />
+                        <h3 className="text-lg font-black uppercase tracking-widest">{label}</h3>
+                        <div className="h-px bg-zinc-200 dark:bg-zinc-800 flex-1 ml-2"></div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-5">
+                        {groupPresentations.map((p: PptPresentationFile) => (
+                          <div key={p.id} className="group flex flex-col bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/5 rounded-3xl p-6 hover:border-indigo-500 hover:shadow-2xl transition-all relative cursor-pointer" onClick={() => renamingId !== p.id && navigate(`/app/ppt-presentation/${p.id}`)}>
+                            <div className="flex justify-between items-start mb-4 relative z-30">
+                              <div className="p-3 bg-indigo-500/10 text-indigo-500 rounded-2xl"><Presentation className="w-7 h-7" /></div>
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <button onClick={(e) => { e.stopPropagation(); handleDelete(p); }} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"><Trash2 className="w-4.5 h-4.5" /></button>
+                                <div
+                                  className="relative"
+                                  ref={activeMenuId === p.id ? activeMenuRef : null}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button onClick={(e) => handleToggleCardMenu(e, p.id)} className={`p-2 rounded-xl transition-all ${activeMenuId === p.id ? 'bg-indigo-500 text-white' : 'text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}><MoreVertical className="w-4.5 h-4.5" /></button>
+                                  {activeMenuId === p.id && (
+                                    <div className="absolute top-full right-0 mt-2 w-44 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-2xl shadow-2xl z-50 py-2 animate-in slide-in-from-top-2">
+                                      <button onClick={(e) => { e.stopPropagation(); handleRenameClick(p); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all"><Edit3 className="w-4 h-4 text-indigo-500" /> Rename Title</button>
+                                      <button onClick={(e) => { e.stopPropagation(); handleEditSlides(p); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all"><LayoutPanelLeft className="w-4 h-4 text-purple-500" /> Edit Slide Text</button>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
+                            <div className="relative z-20" onClick={(e) => renamingId === p.id && e.stopPropagation()}>
+                              {renamingId === p.id ? (
+                                <div className="flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+                                  <input autoFocus type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveRename(p.id); if (e.key === 'Escape') setRenamingId(null); }} className="w-full px-3 py-1.5 bg-zinc-50 dark:bg-zinc-950 border-2 border-indigo-500 rounded-lg outline-none text-sm font-bold text-zinc-900 dark:text-white" />
+                                  <button onClick={(e) => { e.stopPropagation(); handleSaveRename(p.id); }} className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all shadow-sm"><Check className="w-4 h-4" /></button>
+                                </div>
+                              ) : (
+                                <h3 className="font-black text-zinc-900 dark:text-zinc-100 truncate text-lg uppercase tracking-tight group-hover:text-indigo-600 transition-colors">{p.name}</h3>
+                              )}
+                            </div>
+                            <div className="flex flex-col gap-1 mt-2">
+                              <p className="text-[10px] text-zinc-400 font-bold uppercase flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slidesCount} Slides</p>
+                              <p className="text-[10px] text-zinc-500/70 font-bold uppercase">{p.sourceType === 'uploaded' ? 'Uploaded PPTX' : 'Generated Slides'}</p>
+                              <p className="text-[8px] text-zinc-500/70 font-bold uppercase">Created: {new Date(p.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                            </div>
                           </div>
-                          <div className="relative z-20" onClick={(e) => renamingId === p.id && e.stopPropagation()}>
-                            {renamingId === p.id ? (
-                              <div className="flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
-                                <input autoFocus type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveRename(p.id); if (e.key === 'Escape') setRenamingId(null); }} className="w-full px-3 py-1.5 bg-zinc-50 dark:bg-zinc-950 border-2 border-indigo-500 rounded-lg outline-none text-sm font-bold text-zinc-900 dark:text-white" />
-                                <button onClick={(e) => { e.stopPropagation(); handleSaveRename(p.id); }} className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all shadow-sm"><Check className="w-4 h-4" /></button>
-                              </div>
-                            ) : (
-                              <h3 className="font-black text-zinc-900 dark:text-zinc-100 truncate text-lg uppercase tracking-tight group-hover:text-indigo-600 transition-colors">{p.name}</h3>
-                            )}
-                          </div>
-                          <div className="flex flex-col gap-1 mt-2">
-                            <p className="text-[10px] text-zinc-400 font-bold uppercase flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slidesCount} Slides</p>
-                            <p className="text-[10px] text-zinc-500/70 font-bold uppercase">{p.sourceType === 'uploaded' ? 'Uploaded PPTX' : 'Generated Slides'}</p>
-                            <p className="text-[8px] text-zinc-500/70 font-bold uppercase">Created: {new Date(p.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )
-              ))
-            )}
+                  )
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-10 space-y-6">
+        <div className="flex flex-col gap-4 rounded-[2.5rem] border border-zinc-200 dark:border-white/5 bg-white/70 dark:bg-zinc-900/70 p-6 md:p-8 shadow-lg backdrop-blur-md">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500">Presentation Notes</p>
+              <h3 className="text-xl font-black text-zinc-900 dark:text-zinc-100">Workspace guide</h3>
+            </div>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Quick reminders while you create, review, and export your slides.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-[1.75rem] border border-indigo-200 dark:border-indigo-500/20 bg-linear-to-br from-indigo-50 to-white dark:from-indigo-950/20 dark:to-zinc-950 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-500 mb-3">Create Presentation</p>
+              <h4 className="text-base font-black text-zinc-900 dark:text-zinc-100 mb-2">Edit each slide directly</h4>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                Every slide has its own font, size, alignment, and image controls so you can style them independently.
+              </p>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-emerald-200 dark:border-emerald-500/20 bg-linear-to-br from-emerald-50 to-white dark:from-emerald-950/20 dark:to-zinc-950 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-500 mb-3">Presentation Files</p>
+              <h4 className="text-base font-black text-zinc-900 dark:text-zinc-100 mb-2">Reuse saved decks fast</h4>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                Use the right panel to reopen previous presentations, rename titles, or continue editing existing slide decks.
+              </p>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-amber-200 dark:border-amber-500/20 bg-linear-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-zinc-950 p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-500 mb-3">Export Tips</p>
+              <h4 className="text-base font-black text-zinc-900 dark:text-zinc-100 mb-2">Finalize before download</h4>
+              <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                Check your template, background image, and slide text first, then export to PPT or JPG when the layout looks right.
+              </p>
+            </div>
           </div>
         </div>
       </div>

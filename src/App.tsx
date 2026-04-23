@@ -321,7 +321,10 @@ export default function App() {
     return saved !== null ? JSON.parse(saved) : true;
   });
 
-  const [bgPlayEnabled, setBgPlayEnabled] = useState(true);
+  const [bgPlayEnabled, setBgPlayEnabled] = useState(() => {
+    const saved = localStorage.getItem('bg_play_enabled');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
   const [playHistory, setPlayHistory] = useState<any[]>(() => {
     const saved = localStorage.getItem('jamc_history');
     return saved ? JSON.parse(saved) : [];
@@ -496,10 +499,40 @@ export default function App() {
   const currentSongRef = useRef<Song | null>(currentSong);
   const foldersRef = useRef<PlaylistFolder[]>(folders);
   const autoPlayRef = useRef<boolean>(isAutoPlayNextEnabled);
+  const wasPlayingBeforeHideRef = useRef(false);
 
   useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
   useEffect(() => { foldersRef.current = folders; }, [folders]);
   useEffect(() => { autoPlayRef.current = isAutoPlayNextEnabled; }, [isAutoPlayNextEnabled]);
+  useEffect(() => {
+    localStorage.setItem('bg_play_enabled', JSON.stringify(bgPlayEnabled));
+  }, [bgPlayEnabled]);
+
+  const handleBackgroundPlayToggle = useCallback((enabled: boolean) => {
+    setBgPlayEnabled(enabled);
+
+    if (enabled) {
+      wasPlayingBeforeHideRef.current = false;
+      return;
+    }
+
+    if (document.hidden) {
+      const player = ytPlayerRef.current;
+      const isCurrentlyPlaying = !!(
+        player &&
+        typeof player.getPlayerState === 'function' &&
+        window.YT &&
+        player.getPlayerState() === window.YT.PlayerState.PLAYING
+      );
+
+      wasPlayingBeforeHideRef.current = isCurrentlyPlaying;
+
+      if (isCurrentlyPlaying && typeof player.pauseVideo === 'function') {
+        try { player.pauseVideo(); } catch (e) {}
+        setIsPlaying(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -580,10 +613,41 @@ export default function App() {
   useEffect(() => {
     if (!isMinistryToolRoute) return;
 
+    setShowFloatingPlayer(false);
+    if (bgPlayEnabled) return;
+
     try { ytPlayerRef.current?.pauseVideo?.(); } catch (e) {}
     setIsPlaying(false);
-    setShowFloatingPlayer(false);
-  }, [isMinistryToolRoute]);
+  }, [bgPlayEnabled, isMinistryToolRoute]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const player = ytPlayerRef.current;
+      if (!player || !window.YT || typeof player.getPlayerState !== 'function') return;
+
+      if (document.hidden) {
+        if (bgPlayEnabled) return;
+
+        const isCurrentlyPlaying = player.getPlayerState() === window.YT.PlayerState.PLAYING;
+        wasPlayingBeforeHideRef.current = isCurrentlyPlaying;
+
+        if (isCurrentlyPlaying && typeof player.pauseVideo === 'function') {
+          try { player.pauseVideo(); } catch (e) {}
+          setIsPlaying(false);
+        }
+        return;
+      }
+
+      if (!bgPlayEnabled && wasPlayingBeforeHideRef.current && typeof player.playVideo === 'function') {
+        try { player.playVideo(); } catch (e) {}
+        setIsPlaying(true);
+      }
+      wasPlayingBeforeHideRef.current = false;
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [bgPlayEnabled]);
 
   const handleVanillaSongEnded = (playerInstance: any) => {
     if (!autoPlayRef.current) { 
@@ -894,7 +958,7 @@ export default function App() {
           activeFolderId={activeFolderId} inputValue={inputValue} setInputValue={setInputValue} 
           onSubmit={handleHeaderSubmit} setIsSidebarOpen={setIsSidebarOpen} isFetching={isFetching} 
           searchMode={searchMode} setSearchMode={setSearchMode} bgPlayEnabled={bgPlayEnabled} 
-          setBgPlayEnabled={setBgPlayEnabled} youtubeResults={youtubeResults} setYoutubeResults={setYoutubeResults}
+          setBgPlayEnabled={handleBackgroundPlayToggle} youtubeResults={youtubeResults} setYoutubeResults={setYoutubeResults}
           onImportYT={handleImportYT} importingId={importingId}
         />
         
@@ -923,9 +987,16 @@ export default function App() {
         </main>
 
         {isClient && currentSong && (
-          <div style={{ display: (isEasyWorshipPage || isFooterHiddenRoute) ? 'none' : 'block' }}>
+          <div>
             <Draggable nodeRef={nodeRef} handle=".drag-handle" cancel=".no-drag" bounds="parent" disabled={!isMobile}>
-              <div ref={nodeRef} className={`fixed bottom-28 right-4 md:bottom-32 md:right-8 z-60 w-[70vw] max-w-[16rem] md:w-80 transition-opacity duration-500 ${showFloatingPlayer ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+              <div
+                ref={nodeRef}
+                className={`transition-opacity duration-500 ${
+                  (isEasyWorshipPage || isFooterHiddenRoute)
+                    ? 'fixed -bottom-96 -right-96 z-[-1] w-px opacity-0 pointer-events-none'
+                    : `fixed bottom-28 right-4 md:bottom-32 md:right-8 z-60 w-[70vw] max-w-[16rem] md:w-80 ${showFloatingPlayer ? 'opacity-100' : 'opacity-0 pointer-events-none'}`
+                }`}
+              >
                 <div className="drag-handle absolute top-0 left-0 w-full p-2 flex justify-between items-center bg-black/80 z-20 border-b border-white/5" style={{ cursor: isMobile ? 'move' : 'default' }}>
                   <div className="flex items-center gap-2 px-2 max-w-[75%]">
                     {isMobile && <GripHorizontal className="w-3 h-3 text-zinc-500" />}

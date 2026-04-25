@@ -40,7 +40,7 @@ const getCleanLyricsText = (lyrics: string) => {
 
   const isHeader = (line: string) => {
     const tl = line.trim();
-    return /^\[(.*?)\]$/.test(tl) || /^(Verse|Chorus|Bridge|Pre-Chorus|Intro|Outro|Hook|Refrain|Interlude|Tag|Ending|Instrumental|Solo)[\s\d]*:?$/i.test(tl);
+    return /^\[(.*?)\]$/.test(tl) || /^(Verse|VERSE I|VERSE II|Verse II|Verse I|Chorus|Bridge|Pre-Chorus|Intro|Outro|Hook|Refrain|Interlude|Tag|Ending|Instrumental|Solo)[\s\d]*:?$/i.test(tl);
   };
 
   for (let i = 0; i < rawLines.length; i++) {

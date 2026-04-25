@@ -33,7 +33,6 @@ const SHOULD_USE_LOCAL_PROJECTOR_SYNC =
   isLocalObsHost || import.meta.env.VITE_PROJECTOR_LOCAL_SYNC === 'true';
 const OBS_STATE_FAST_POLL_INTERVAL_MS = 250;
 const OBS_STATE_IDLE_POLL_INTERVAL_MS = 2000;
-const OBS_STATE_CLEARED_POLL_INTERVAL_MS = 15000;
 const OBS_STATE_FAST_POLL_WINDOW_MS = 15000;
 const OBS_STATE_REQUEST_TIMEOUT_MS = 3000;
 const OBS_STATE_STREAM_FALLBACK_DELAY_MS = 5000;
@@ -354,11 +353,9 @@ export default function EasyWorshipView() {
           if (shouldFullyPausePolling()) return;
 
           const recentlyChanged = Date.now() - lastActivityAt < OBS_STATE_FAST_POLL_WINDOW_MS;
-          const nextDelay = isOutputClearedRef.current
-            ? OBS_STATE_CLEARED_POLL_INTERVAL_MS
-            : recentlyChanged
-              ? OBS_STATE_FAST_POLL_INTERVAL_MS
-              : OBS_STATE_IDLE_POLL_INTERVAL_MS;
+          const nextDelay = recentlyChanged
+            ? OBS_STATE_FAST_POLL_INTERVAL_MS
+            : OBS_STATE_IDLE_POLL_INTERVAL_MS;
 
           pollTimer = window.setTimeout(
             poll,

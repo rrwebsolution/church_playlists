@@ -57,36 +57,8 @@ const getVideoBlob = async (key: string): Promise<Blob | null> => {
   return blob;
 };
 
-const getObsLyricsText = (text: string) => {
-  const trimmedText = text.trim();
-  if (!trimmedText) return '';
-
-  const stanzaBlocks = trimmedText
-    .split(/\n\s*\n/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  if (stanzaBlocks.length >= 2) {
-    return stanzaBlocks.slice(0, 2).join('\n\n');
-  }
-
-  const lines = trimmedText
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length <= 4) {
-    return lines.join('\n');
-  }
-
-  return [lines.slice(0, 4).join('\n'), lines.slice(4, 8).join('\n')]
-    .filter(Boolean)
-    .join('\n\n');
-};
-
 export default function EasyWorshipView() {
   const searchParams = new URLSearchParams(window.location.search);
-  const isObsLyricsOnly = searchParams.get('obs') === 'lyrics';
   const [lyrics, setLyrics] = useState('');
   const [fontSize, setFontSize] = useState(60);
   const [bgType, setBgType] = useState<BackgroundType>('none');
@@ -106,7 +78,6 @@ export default function EasyWorshipView() {
   const uploadedVideoObjectUrlRef = useRef<string | null>(null);
   lyricsRef.current = lyrics;
 
-  const displayedLyrics = isObsLyricsOnly ? getObsLyricsText(lyrics) : lyrics;
   const isAnnouncementMode = projectorScene?.mode === 'announcement' && projectorScene?.payload;
 
   const handleEnterFullscreen = () => {
@@ -216,21 +187,6 @@ export default function EasyWorshipView() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!isObsLyricsOnly) return;
-
-    const previousBodyBackground = document.body.style.background;
-    const previousHtmlBackground = document.documentElement.style.background;
-
-    document.body.style.background = 'transparent';
-    document.documentElement.style.background = 'transparent';
-
-    return () => {
-      document.body.style.background = previousBodyBackground;
-      document.documentElement.style.background = previousHtmlBackground;
-    };
-  }, [isObsLyricsOnly]);
 
   useEffect(() => {
     const syncFromLocalStorage = () => {
@@ -374,7 +330,6 @@ export default function EasyWorshipView() {
   }, [applyData]);
 
   const getBgClass = (type: BackgroundType) => {
-    if (isObsLyricsOnly) return 'bg-transparent';
     if (type === 'praise') return 'bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-900 animate-gradient-fast';
     if (type === 'worship') return 'bg-gradient-to-t from-black via-indigo-950 to-black animate-gradient-slow';
     if (type === 'green') return 'bg-[#00FF00]';
@@ -395,7 +350,7 @@ export default function EasyWorshipView() {
         </button>
       )}
 
-      {!isObsLyricsOnly && !isAnnouncementMode && bgType === 'video' && (resolvedUploadedVideoUrl || videoUrl) && (
+      {!isAnnouncementMode && bgType === 'video' && (resolvedUploadedVideoUrl || videoUrl) && (
         <video
           ref={videoRef}
           key={resolvedUploadedVideoUrl || videoUrl}
@@ -456,22 +411,21 @@ export default function EasyWorshipView() {
         <div
           className="w-full flex justify-center relative z-10"
           style={{
-            maxWidth: isObsLyricsOnly ? '70%' : '95%',
+            maxWidth: '95%',
           }}
         >
           <h1
             className="text-white text-center font-bold leading-[1.2] tracking-wide"
             style={{
-              fontSize: `${isObsLyricsOnly ? Math.max(42, Math.round(fontSize * 0.82)) : fontSize}px`,
+              fontSize: `${fontSize}px`,
               fontFamily,
               fontWeight: isBold ? 'bold' : 'normal',
               textTransform: isAllCaps ? 'uppercase' : 'none',
-              textShadow: isObsLyricsOnly
-                ? '0px 4px 18px rgba(0,0,0,0.95), 0px 0px 8px rgba(0,0,0,0.75)'
-                : '0px 4px 40px rgba(0,0,0,1), 0px 0px 20px rgba(0,0,0,0.8)'
+              WebkitTextStroke: '2px #000',
+              textShadow: '0 8px 40px rgba(0,0,0,0.85)'
             }}
           >
-            <span className="whitespace-pre-wrap">{displayedLyrics}</span>
+            <span className="whitespace-pre-wrap">{lyrics}</span>
           </h1>
         </div>
       )}

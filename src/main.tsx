@@ -179,14 +179,6 @@ const routes = [
       </Suspense>
     )
   },
-  {
-    path: '/obs-lyrics',
-    element: (
-      <Suspense fallback={<Loader />}>
-        <EasyWorshipView />
-      </Suspense>
-    )
-  },
 
   // --- 404 CATCH ALL ---
   {

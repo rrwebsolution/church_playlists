@@ -15,13 +15,24 @@ const isLocalObsHost =
   typeof window !== 'undefined' &&
   isPrivateNetworkHost(window.location.hostname);
 
-const API_URL = isLocalObsHost
-  ? '/api/obs-state'
-  : (import.meta.env.VITE_OBS_STATE_URL || '/api/obs-state');
+const CONFIGURED_OBS_STATE_URL = import.meta.env.VITE_OBS_STATE_URL || '';
+const API_URL = CONFIGURED_OBS_STATE_URL || (isLocalObsHost ? '/api/obs-state' : '/api/obs-state');
 const STREAM_URL = `${API_URL}/stream`;
+const isLocalObsApi =
+  typeof window !== 'undefined' &&
+  (() => {
+    try {
+      return isPrivateNetworkHost(new URL(API_URL, window.location.origin).hostname);
+    } catch {
+      return isLocalObsHost;
+    }
+  })();
 const SHOULD_USE_OBS_STREAM =
-  isLocalObsHost || import.meta.env.VITE_OBS_STATE_STREAM === 'true';
+  isLocalObsApi || import.meta.env.VITE_OBS_STATE_STREAM === 'true';
+const SHOULD_USE_LOCAL_PROJECTOR_SYNC =
+  isLocalObsHost || import.meta.env.VITE_PROJECTOR_LOCAL_SYNC === 'true';
 const OBS_STATE_POLL_INTERVAL_MS = 250;
+const OBS_STATE_REQUEST_TIMEOUT_MS = 3000;
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
 const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
 const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';
@@ -29,6 +40,11 @@ const PROJECTOR_SCENE_STORAGE_KEY = 'jamc_projector_scene';
 const PROJECTOR_SCENE_SYNC_TYPE = 'jamc-projector-scene-sync';
 const VIDEO_LIBRARY_DB = 'ew-video-library';
 const VIDEO_LIBRARY_STORE = 'videos';
+
+const withCacheBuster = (url: string) => {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}_obsTs=${Date.now()}`;
+};
 
 const openVideoLibraryDb = (): Promise<IDBDatabase> =>
   new Promise((resolve, reject) => {
@@ -196,6 +212,8 @@ export default function EasyWorshipView() {
   }, []);
 
   useEffect(() => {
+    if (!SHOULD_USE_LOCAL_PROJECTOR_SYNC) return;
+
     const syncFromLocalStorage = () => {
       const raw = localStorage.getItem('jamc_live_display');
       if (!raw) return;
@@ -234,6 +252,8 @@ export default function EasyWorshipView() {
   }, [applyData, applyProjectorScene]);
 
   useEffect(() => {
+    if (!SHOULD_USE_LOCAL_PROJECTOR_SYNC) return;
+
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === PROJECTOR_SCENE_SYNC_TYPE) {
@@ -265,11 +285,14 @@ export default function EasyWorshipView() {
     const fetchLatestState = async () => {
       if (isPolling || stopped) return;
       isPolling = true;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), OBS_STATE_REQUEST_TIMEOUT_MS);
 
       try {
-        const response = await fetch(API_URL, {
+        const response = await fetch(withCacheBuster(API_URL), {
           headers: { Accept: 'application/json' },
           cache: 'no-store',
+          signal: controller.signal,
         });
 
         if (response.ok) {
@@ -278,6 +301,7 @@ export default function EasyWorshipView() {
       } catch {
         // Polling is a fallback path for OBS/projector sync, so keep it quiet and retry.
       } finally {
+        window.clearTimeout(timeoutId);
         isPolling = false;
       }
     };
@@ -297,7 +321,7 @@ export default function EasyWorshipView() {
       pollTimer = window.setTimeout(poll, delay);
     };
 
-    if (typeof BroadcastChannel !== 'undefined') {
+    if (SHOULD_USE_LOCAL_PROJECTOR_SYNC && typeof BroadcastChannel !== 'undefined') {
       channel = new BroadcastChannel(OBS_STATE_CHANNEL);
       channel.onmessage = (event) => {
         applyData(event.data);

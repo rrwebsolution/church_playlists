@@ -19,6 +19,9 @@ const API_URL = isLocalObsHost
   ? '/api/obs-state'
   : (import.meta.env.VITE_OBS_STATE_URL || '/api/obs-state');
 const STREAM_URL = `${API_URL}/stream`;
+const SHOULD_USE_OBS_STREAM =
+  isLocalObsHost || import.meta.env.VITE_OBS_STATE_STREAM === 'true';
+const OBS_STATE_POLL_INTERVAL_MS = 1000;
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
 const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
 const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';
@@ -148,7 +151,8 @@ export default function EasyWorshipView() {
     if (!scene) return;
 
     if (scene.mode === 'announcement') {
-      setProjectorScene(scene);
+      localStorage.removeItem(PROJECTOR_SCENE_STORAGE_KEY);
+      setProjectorScene(null);
       return;
     }
 
@@ -291,6 +295,44 @@ export default function EasyWorshipView() {
   useEffect(() => {
     let channel: BroadcastChannel | null = null;
     let stream: EventSource | null = null;
+    let pollTimer: number | null = null;
+    let isPolling = false;
+    let stopped = false;
+
+    const fetchLatestState = async () => {
+      if (isPolling || stopped) return;
+      isPolling = true;
+
+      try {
+        const response = await fetch(API_URL, {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        });
+
+        if (response.ok) {
+          applyData(await response.json());
+        }
+      } catch {
+        // Polling is a fallback path for OBS/projector sync, so keep it quiet and retry.
+      } finally {
+        isPolling = false;
+      }
+    };
+
+    const startPolling = (delay = 0) => {
+      if (pollTimer !== null || stopped) return;
+
+      const poll = async () => {
+        pollTimer = null;
+        await fetchLatestState();
+
+        if (!stopped) {
+          pollTimer = window.setTimeout(poll, OBS_STATE_POLL_INTERVAL_MS);
+        }
+      };
+
+      pollTimer = window.setTimeout(poll, delay);
+    };
 
     if (typeof BroadcastChannel !== 'undefined') {
       channel = new BroadcastChannel(OBS_STATE_CHANNEL);
@@ -299,7 +341,7 @@ export default function EasyWorshipView() {
       };
     }
 
-    if (typeof EventSource !== 'undefined') {
+    if (SHOULD_USE_OBS_STREAM && typeof EventSource !== 'undefined') {
       stream = new EventSource(STREAM_URL);
 
       stream.addEventListener('obs-state', (event) => {
@@ -313,11 +355,21 @@ export default function EasyWorshipView() {
           applyData(JSON.parse(event.data));
         } catch {}
       };
+
+      stream.onerror = () => {
+        stream?.close();
+        stream = null;
+        startPolling();
+      };
+    } else {
+      startPolling();
     }
 
     return () => {
+      stopped = true;
       channel?.close();
       stream?.close();
+      if (pollTimer !== null) window.clearTimeout(pollTimer);
     };
   }, [applyData]);
 

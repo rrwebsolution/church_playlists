@@ -4,11 +4,9 @@ import { useOutletContext } from 'react-router-dom';
 import {
   BellRing,
   CalendarRange,
-  ExternalLink,
   CopyPlus,
   Megaphone,
   Plus,
-  Presentation,
   Send,
   Sparkles,
   Star,
@@ -20,10 +18,6 @@ type AnnouncementContext = {
   announcements: AnnouncementItem[];
   setAnnouncements: Dispatch<SetStateAction<AnnouncementItem[]>>;
 };
-
-const PROJECTOR_SCENE_STORAGE_KEY = 'jamc_projector_scene';
-const PROJECTOR_SCENE_SYNC_TYPE = 'jamc-projector-scene-sync';
-const PROJECTOR_WINDOW_NAME = 'projector_output';
 
 const AUDIENCE_OPTIONS: Array<{ value: NonNullable<AnnouncementItem['audience']>; label: string }> = [
   { value: 'church-wide', label: 'Church Wide' },
@@ -89,23 +83,6 @@ const duplicateAnnouncement = (announcement: AnnouncementItem): AnnouncementItem
   updatedAt: new Date().toISOString(),
 });
 
-const buildAnnouncementProjectorPayload = (announcement: AnnouncementItem) => ({
-  mode: 'announcement',
-  payload: {
-    id: announcement.id,
-    title: announcement.title,
-    shortText: announcement.shortText || '',
-    body: announcement.body || '',
-    eventDate: announcement.eventDate || '',
-    eventTime: announcement.eventTime || '',
-    venue: announcement.venue || '',
-    audience: announcement.audience || 'church-wide',
-    contactPerson: announcement.contactPerson || '',
-    priority: announcement.priority || 'normal',
-    updatedAt: Date.now(),
-  },
-});
-
 export default function AnnouncementManager() {
   const { announcements, setAnnouncements } = useOutletContext<AnnouncementContext>();
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState(announcements[0]?.id ?? '');
@@ -132,38 +109,6 @@ export default function AnnouncementManager() {
   const publishedCount = announcements.filter((item) => item.isPublished).length;
   const featuredCount = announcements.filter((item) => item.priority === 'featured').length;
   const upcomingCount = announcements.filter((item) => item.eventDate).length;
-
-  const pushAnnouncementToProjector = (announcement: AnnouncementItem, shouldOpen = false) => {
-    const scene = buildAnnouncementProjectorPayload(announcement);
-    localStorage.setItem(PROJECTOR_SCENE_STORAGE_KEY, JSON.stringify(scene));
-
-    if (shouldOpen) {
-      const projectorWindow = window.open(
-        '/projector?fs=1',
-        PROJECTOR_WINDOW_NAME,
-        'width=1920,height=1080,menubar=no,toolbar=no,location=no,status=no'
-      );
-
-      projectorWindow?.focus();
-      window.setTimeout(() => {
-        projectorWindow?.postMessage({ type: PROJECTOR_SCENE_SYNC_TYPE, payload: scene }, window.location.origin);
-      }, 500);
-      return;
-    }
-
-    window.postMessage({ type: PROJECTOR_SCENE_SYNC_TYPE, payload: scene }, window.location.origin);
-  };
-
-  const clearAnnouncementFromProjector = () => {
-    const scene = {
-      mode: 'lyrics',
-      payload: null,
-      updatedAt: Date.now(),
-    };
-
-    localStorage.setItem(PROJECTOR_SCENE_STORAGE_KEY, JSON.stringify(scene));
-    window.postMessage({ type: PROJECTOR_SCENE_SYNC_TYPE, payload: scene }, window.location.origin);
-  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 animate-in fade-in duration-500 pb-24">
@@ -205,16 +150,6 @@ export default function AnnouncementManager() {
               >
                 <CopyPlus className="h-4 w-4" />
                 Duplicate
-              </button>
-            )}
-            {selectedAnnouncement && (
-              <button
-                type="button"
-                onClick={() => pushAnnouncementToProjector(selectedAnnouncement)}
-                className="flex items-center gap-2 rounded-2xl bg-zinc-900 px-5 py-3 text-xs font-black uppercase tracking-wider text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
-              >
-                <Presentation className="h-4 w-4" />
-                Show on Projector
               </button>
             )}
           </div>
@@ -322,21 +257,6 @@ export default function AnnouncementManager() {
                   <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Write one version for screen teaser and one for the full church slide.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => pushAnnouncementToProjector(selectedAnnouncement, true)}
-                    className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-rose-600 transition hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Open Projector
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearAnnouncementFromProjector}
-                    className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] font-black uppercase tracking-wider text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
-                  >
-                    Clear Screen
-                  </button>
                   <button
                     type="button"
                     onClick={() => {

@@ -257,8 +257,6 @@ export default function EasyWorshipController() {
   const draftUploadObjectUrlRef = useRef<string | null>(null);
   const persistedObjectUrlsRef = useRef<string[]>([]);
   const obsBroadcastChannelRef = useRef<BroadcastChannel | null>(null);
-  const lastObsPayloadRef = useRef<string>('');
-  const pendingObsPayloadRef = useRef<string>('');
   const obsClientIdRef = useRef(getObsStateClientId());
   const obsSequenceRef = useRef(Date.now());
   const lastObsAckSequenceRef = useRef(0);
@@ -516,13 +514,7 @@ export default function EasyWorshipController() {
     };
   }, [showMonitor]);
 
-  useEffect(() => {
-    return () => {
-      pendingObsPayloadRef.current = '';
-    };
-  }, []);
-
-  const postObsState = async (signature: string, data: ObsStatePayload) => {
+  const postObsState = async (data: ObsStatePayload) => {
     try {
       await fetch(OBS_STATE_API_URL, {
         method: 'POST',
@@ -535,16 +527,11 @@ export default function EasyWorshipController() {
 
       if (data.clientSequence >= lastObsAckSequenceRef.current) {
         lastObsAckSequenceRef.current = data.clientSequence;
-        lastObsPayloadRef.current = signature;
       }
     } catch (err) {
       console.error('Failed to broadcast data:', err);
       if (data.clientSequence === obsSequenceRef.current) {
         Toast.fire({ icon: 'error', title: 'Broadcast Failed!' });
-      }
-    } finally {
-      if (pendingObsPayloadRef.current === signature) {
-        pendingObsPayloadRef.current = '';
       }
     }
   };
@@ -576,17 +563,6 @@ export default function EasyWorshipController() {
       clientSequence: obsSequenceRef.current
     };
 
-    const requestSignature = JSON.stringify({
-      text: data.text,
-      fontSize: data.fontSize,
-      background: data.background,
-      fontFamily: data.fontFamily,
-      videoUrl: data.videoUrl,
-      uploadedVideoKey: data.uploadedVideoKey,
-      bold: data.bold,
-      allCaps: data.allCaps,
-    });
-
     localStorage.setItem('jamc_live_display', JSON.stringify(data));
     obsBroadcastChannelRef.current?.postMessage(data);
     projectorWindowRef.current?.postMessage(
@@ -594,12 +570,7 @@ export default function EasyWorshipController() {
       window.location.origin
     );
 
-    if (requestSignature === pendingObsPayloadRef.current || requestSignature === lastObsPayloadRef.current) {
-      return;
-    }
-
-    pendingObsPayloadRef.current = requestSignature;
-    void postObsState(requestSignature, data);
+    void postObsState(data);
   };
 
   const quickSlides = useMemo(() => {

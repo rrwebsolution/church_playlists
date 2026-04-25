@@ -87,8 +87,15 @@ export default function EasyWorshipView() {
 
   const applyData = useCallback((data: any) => {
     if (projectorScene?.mode === 'announcement') return;
-    if (!data || (data.updatedAt && data.updatedAt <= lastUpdatedAt.current)) return;
-    if (data.updatedAt) lastUpdatedAt.current = data.updatedAt;
+    if (!data) return;
+
+    const incomingVersion = Math.max(
+      Number(data.clientSequence || 0),
+      Number(data.updatedAt || 0)
+    );
+
+    if (incomingVersion && incomingVersion < lastUpdatedAt.current) return;
+    if (incomingVersion) lastUpdatedAt.current = incomingVersion;
 
     const newText = data.text ?? '';
     const applyVisualState = () => {

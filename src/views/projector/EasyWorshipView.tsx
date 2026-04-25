@@ -31,8 +31,11 @@ const SHOULD_USE_OBS_STREAM =
   isLocalObsApi || import.meta.env.VITE_OBS_STATE_STREAM === 'true';
 const SHOULD_USE_LOCAL_PROJECTOR_SYNC =
   isLocalObsHost || import.meta.env.VITE_PROJECTOR_LOCAL_SYNC === 'true';
-const OBS_STATE_POLL_INTERVAL_MS = 250;
+const OBS_STATE_FAST_POLL_INTERVAL_MS = 250;
+const OBS_STATE_IDLE_POLL_INTERVAL_MS = 2000;
+const OBS_STATE_FAST_POLL_WINDOW_MS = 15000;
 const OBS_STATE_REQUEST_TIMEOUT_MS = 3000;
+const OBS_STATE_STREAM_FALLBACK_DELAY_MS = 5000;
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
 const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
 const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';
@@ -279,8 +282,18 @@ export default function EasyWorshipView() {
     let channel: BroadcastChannel | null = null;
     let stream: EventSource | null = null;
     let pollTimer: number | null = null;
+    let streamFallbackTimer: number | null = null;
     let isPolling = false;
     let stopped = false;
+    let lastSeenVersion = lastUpdatedAt.current;
+    let lastActivityAt = Date.now();
+
+    const clearStreamFallbackTimer = () => {
+      if (streamFallbackTimer !== null) {
+        window.clearTimeout(streamFallbackTimer);
+        streamFallbackTimer = null;
+      }
+    };
 
     const fetchLatestState = async () => {
       if (isPolling || stopped) return;
@@ -296,7 +309,18 @@ export default function EasyWorshipView() {
         });
 
         if (response.ok) {
-          applyData(await response.json());
+          const data = await response.json();
+          const incomingVersion = Math.max(
+            Number(data.clientSequence || 0),
+            Number(data.updatedAt || 0)
+          );
+
+          if (incomingVersion && incomingVersion !== lastSeenVersion) {
+            lastSeenVersion = incomingVersion;
+            lastActivityAt = Date.now();
+          }
+
+          applyData(data);
         }
       } catch {
         // Polling is a fallback path for OBS/projector sync, so keep it quiet and retry.
@@ -314,11 +338,26 @@ export default function EasyWorshipView() {
         await fetchLatestState();
 
         if (!stopped) {
-          pollTimer = window.setTimeout(poll, OBS_STATE_POLL_INTERVAL_MS);
+          const recentlyChanged = Date.now() - lastActivityAt < OBS_STATE_FAST_POLL_WINDOW_MS;
+          pollTimer = window.setTimeout(
+            poll,
+            recentlyChanged ? OBS_STATE_FAST_POLL_INTERVAL_MS : OBS_STATE_IDLE_POLL_INTERVAL_MS
+          );
         }
       };
 
       pollTimer = window.setTimeout(poll, delay);
+    };
+
+    const schedulePollingFallback = () => {
+      if (pollTimer !== null || streamFallbackTimer !== null || stopped) return;
+
+      streamFallbackTimer = window.setTimeout(() => {
+        streamFallbackTimer = null;
+        stream?.close();
+        stream = null;
+        startPolling();
+      }, OBS_STATE_STREAM_FALLBACK_DELAY_MS);
     };
 
     if (SHOULD_USE_LOCAL_PROJECTOR_SYNC && typeof BroadcastChannel !== 'undefined') {
@@ -331,22 +370,29 @@ export default function EasyWorshipView() {
     if (SHOULD_USE_OBS_STREAM && typeof EventSource !== 'undefined') {
       stream = new EventSource(STREAM_URL);
 
+      stream.onopen = () => {
+        lastActivityAt = Date.now();
+        clearStreamFallbackTimer();
+      };
+
       stream.addEventListener('obs-state', (event) => {
         try {
+          lastActivityAt = Date.now();
+          clearStreamFallbackTimer();
           applyData(JSON.parse((event as MessageEvent).data));
         } catch {}
       });
 
       stream.onmessage = (event) => {
         try {
+          lastActivityAt = Date.now();
+          clearStreamFallbackTimer();
           applyData(JSON.parse(event.data));
         } catch {}
       };
 
       stream.onerror = () => {
-        stream?.close();
-        stream = null;
-        startPolling();
+        schedulePollingFallback();
       };
     } else {
       startPolling();
@@ -354,6 +400,7 @@ export default function EasyWorshipView() {
 
     return () => {
       stopped = true;
+      clearStreamFallbackTimer();
       channel?.close();
       stream?.close();
       if (pollTimer !== null) window.clearTimeout(pollTimer);

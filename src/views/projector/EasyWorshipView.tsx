@@ -96,6 +96,11 @@ export default function EasyWorshipView() {
   const lyricsRef = useRef(lyrics);
   const isOutputClearedRef = useRef(true);
   const uploadedVideoObjectUrlRef = useRef<string | null>(null);
+  const pollControlRef = useRef<{
+    start: (delay?: number) => void;
+    stop: () => void;
+    hasStream: () => boolean;
+  } | null>(null);
   lyricsRef.current = lyrics;
 
   const isAnnouncementMode = projectorScene?.mode === 'announcement' && projectorScene?.payload;
@@ -259,6 +264,17 @@ export default function EasyWorshipView() {
   useEffect(() => {
     if (!SHOULD_USE_LOCAL_PROJECTOR_SYNC) return;
 
+    const resumeProjectorSync = (payload?: any) => {
+      if (payload) {
+        const nextText = String(payload.text ?? '').trim();
+        if (nextText) {
+          pollControlRef.current?.start();
+        } else {
+          pollControlRef.current?.stop();
+        }
+      }
+    };
+
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === PROJECTOR_SCENE_SYNC_TYPE) {
@@ -266,6 +282,7 @@ export default function EasyWorshipView() {
         return;
       }
       if (event.data?.type !== PROJECTOR_SYNC_MESSAGE_TYPE) return;
+      resumeProjectorSync(event.data.payload);
       applyData(event.data.payload);
     };
 
@@ -367,6 +384,17 @@ export default function EasyWorshipView() {
       pollTimer = window.setTimeout(poll, delay);
     };
 
+    pollControlRef.current = {
+      start: (delay = 0) => {
+        if (stream) return;
+        startPolling(delay);
+      },
+      stop: () => {
+        stopPolling();
+      },
+      hasStream: () => stream !== null,
+    };
+
     const schedulePollingFallback = () => {
       if (pollTimer !== null || streamFallbackTimer !== null || stopped) return;
 
@@ -430,6 +458,7 @@ export default function EasyWorshipView() {
       channel?.close();
       stream?.close();
       stopPolling();
+      pollControlRef.current = null;
     };
   }, [applyData]);
 

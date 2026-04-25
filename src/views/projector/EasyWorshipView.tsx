@@ -21,7 +21,7 @@ const API_URL = isLocalObsHost
 const STREAM_URL = `${API_URL}/stream`;
 const SHOULD_USE_OBS_STREAM =
   isLocalObsHost || import.meta.env.VITE_OBS_STATE_STREAM === 'true';
-const OBS_STATE_POLL_INTERVAL_MS = 1000;
+const OBS_STATE_POLL_INTERVAL_MS = 250;
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
 const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
 const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';

@@ -35,6 +35,7 @@ const OBS_STATE_API_URL = isLocalObsHost
   ? '/api/obs-state'
   : (import.meta.env.VITE_OBS_STATE_URL || '/api/obs-state');
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
+const OBS_STATE_CLIENT_ID_STORAGE_KEY = 'jamc_obs_state_client_id';
 const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
 const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';
 const LOCAL_BACKEND_BASE_URL =
@@ -53,6 +54,24 @@ const MAX_BACKGROUND_VIDEO_MB = Number.isFinite(parsedMaxBackgroundVideoMb) && p
   ? parsedMaxBackgroundVideoMb
   : DEFAULT_MAX_BACKGROUND_VIDEO_MB;
 const MAX_BACKGROUND_VIDEO_BYTES = MAX_BACKGROUND_VIDEO_MB * 1024 * 1024;
+
+const getObsStateClientId = () => {
+  if (typeof window === 'undefined') return 'server';
+
+  const savedClientId = localStorage.getItem(OBS_STATE_CLIENT_ID_STORAGE_KEY);
+  if (savedClientId) return savedClientId;
+
+  const nextClientId =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  localStorage.setItem(OBS_STATE_CLIENT_ID_STORAGE_KEY, nextClientId);
+  return nextClientId;
+};
+
+const getNextObsSequence = (previousSequence: number) =>
+  Math.max(previousSequence + 1, Date.now());
 
 const formatFileSize = (bytes: number) => {
   if (bytes < 1024 * 1024) {
@@ -146,6 +165,8 @@ interface ObsStatePayload {
   bold: boolean;
   allCaps: boolean;
   updatedAt: number;
+  clientId: string;
+  clientSequence: number;
 }
 
 type BackgroundType = 'none' | 'praise' | 'worship' | 'green' | 'video';
@@ -235,10 +256,12 @@ export default function EasyWorshipController() {
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const draftUploadObjectUrlRef = useRef<string | null>(null);
   const persistedObjectUrlsRef = useRef<string[]>([]);
-  const obsBroadcastTimerRef = useRef<number | null>(null);
   const obsBroadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const lastObsPayloadRef = useRef<string>('');
   const pendingObsPayloadRef = useRef<string>('');
+  const obsClientIdRef = useRef(getObsStateClientId());
+  const obsSequenceRef = useRef(Date.now());
+  const lastObsAckSequenceRef = useRef(0);
   const monitorFrameRef = useRef<HTMLDivElement | null>(null);
   const [monitorScale, setMonitorScale] = useState(0.25);
 
@@ -495,12 +518,36 @@ export default function EasyWorshipController() {
 
   useEffect(() => {
     return () => {
-      if (obsBroadcastTimerRef.current !== null) {
-        window.clearTimeout(obsBroadcastTimerRef.current);
-      }
       pendingObsPayloadRef.current = '';
     };
   }, []);
+
+  const postObsState = async (signature: string, data: ObsStatePayload) => {
+    try {
+      await fetch(OBS_STATE_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (data.clientSequence >= lastObsAckSequenceRef.current) {
+        lastObsAckSequenceRef.current = data.clientSequence;
+        lastObsPayloadRef.current = signature;
+      }
+    } catch (err) {
+      console.error('Failed to broadcast data:', err);
+      if (data.clientSequence === obsSequenceRef.current) {
+        Toast.fire({ icon: 'error', title: 'Broadcast Failed!' });
+      }
+    } finally {
+      if (pendingObsPayloadRef.current === signature) {
+        pendingObsPayloadRef.current = '';
+      }
+    }
+  };
 
   const broadcastData = async (
     text: string,
@@ -513,6 +560,8 @@ export default function EasyWorshipController() {
   ) => {
     setLiveText(text);
     setLastBroadcastAt(Date.now());
+    obsSequenceRef.current = getNextObsSequence(obsSequenceRef.current);
+
     const data: ObsStatePayload = {
       text,
       fontSize: size,
@@ -522,7 +571,9 @@ export default function EasyWorshipController() {
       uploadedVideoKey: bg === 'video' ? activeVideoBlobKey : null,
       bold,
       allCaps,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      clientId: obsClientIdRef.current,
+      clientSequence: obsSequenceRef.current
     };
 
     const requestSignature = JSON.stringify({
@@ -543,36 +594,12 @@ export default function EasyWorshipController() {
       window.location.origin
     );
 
-    if (requestSignature === lastObsPayloadRef.current || requestSignature === pendingObsPayloadRef.current) {
+    if (requestSignature === pendingObsPayloadRef.current || requestSignature === lastObsPayloadRef.current) {
       return;
     }
 
-    if (obsBroadcastTimerRef.current !== null) {
-      window.clearTimeout(obsBroadcastTimerRef.current);
-    }
-
     pendingObsPayloadRef.current = requestSignature;
-    obsBroadcastTimerRef.current = window.setTimeout(async () => {
-      try {
-        await fetch(OBS_STATE_API_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(data),
-        });
-        lastObsPayloadRef.current = requestSignature;
-      } catch (err) {
-        pendingObsPayloadRef.current = '';
-        console.error('Failed to broadcast data:', err);
-        Toast.fire({ icon: 'error', title: 'Broadcast Failed!' });
-        return;
-      } finally {
-        obsBroadcastTimerRef.current = null;
-      }
-      pendingObsPayloadRef.current = '';
-    }, 30);
+    void postObsState(requestSignature, data);
   };
 
   const quickSlides = useMemo(() => {

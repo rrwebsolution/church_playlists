@@ -8,6 +8,8 @@ const DEFAULT_STATE = {
   bold: true,
   allCaps: true,
   updatedAt: 0,
+  clientId: '',
+  clientSequence: 0,
 };
 
 const HEARTBEAT_INTERVAL_MS = 15000;
@@ -56,6 +58,21 @@ const createObsStateService = () => {
       req.on('end', () => {
         try {
           const incoming = JSON.parse(body || '{}');
+          const incomingClientId = incoming.clientId || '';
+          const incomingSequence = Number(incoming.clientSequence || 0);
+          const currentSequence = Number(state.clientSequence || 0);
+
+          if (
+            incomingClientId &&
+            incomingClientId === state.clientId &&
+            incomingSequence > 0 &&
+            currentSequence > 0 &&
+            incomingSequence < currentSequence
+          ) {
+            res.end(JSON.stringify({ ok: true, ignored: true, updatedAt: state.updatedAt }));
+            return;
+          }
+
           state = {
             ...state,
             ...incoming,

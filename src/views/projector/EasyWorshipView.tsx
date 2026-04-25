@@ -95,6 +95,7 @@ export default function EasyWorshipView() {
   const lastUpdatedAt = useRef(0);
   const lyricsRef = useRef(lyrics);
   const isOutputClearedRef = useRef(true);
+  const hasBrowserSyncSignalRef = useRef(false);
   const uploadedVideoObjectUrlRef = useRef<string | null>(null);
   const pollControlRef = useRef<{
     start: (delay?: number) => void;
@@ -142,11 +143,13 @@ export default function EasyWorshipView() {
     const isClearing = newText.trim() === '';
 
     if (isClearing) {
+      lyricsRef.current = '';
       setLyrics('');
       applyVisualState();
       return;
     }
 
+    lyricsRef.current = newText;
     setLyrics(newText);
     applyVisualState();
   }, [projectorScene]);
@@ -167,6 +170,7 @@ export default function EasyWorshipView() {
 
     try {
       const data = JSON.parse(raw);
+      lyricsRef.current = data.text ?? '';
       setLyrics(data.text ?? '');
       if (data.fontSize) setFontSize(data.fontSize);
       if (data.background) setBgType(data.background);
@@ -262,6 +266,7 @@ export default function EasyWorshipView() {
   useEffect(() => {
     const resumeProjectorSync = (payload?: any) => {
       if (payload) {
+        hasBrowserSyncSignalRef.current = true;
         const nextText = String(payload.text ?? '').trim();
         if (nextText) {
           pollControlRef.current?.start();
@@ -318,7 +323,7 @@ export default function EasyWorshipView() {
     };
 
     const shouldFullyPausePolling = () =>
-      isOutputClearedRef.current && SHOULD_USE_BROWSER_PROJECTOR_SYNC;
+      isOutputClearedRef.current && hasBrowserSyncSignalRef.current;
 
     const fetchLatestState = async () => {
       if (isPolling || stopped) return;
@@ -405,6 +410,7 @@ export default function EasyWorshipView() {
     if (SHOULD_USE_BROWSER_PROJECTOR_SYNC && typeof BroadcastChannel !== 'undefined') {
       channel = new BroadcastChannel(OBS_STATE_CHANNEL);
       channel.onmessage = (event) => {
+        hasBrowserSyncSignalRef.current = true;
         applyData(event.data);
         if (isOutputClearedRef.current) {
           stopPolling();

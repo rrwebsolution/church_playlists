@@ -83,19 +83,44 @@ export const createPresentationSlide = (overrides?: Partial<PresentationSlide>):
   };
 };
 
-export const htmlToPlainText = (value?: string) => {
+export const htmlToPlainText = (value?: string): string => {
   if (!value) return '';
 
   if (typeof document !== 'undefined') {
     const container = document.createElement('div');
     container.innerHTML = value;
-    return (container.textContent || container.innerText || '')
-      .replace(/\u00A0/g, ' ')
+
+    const BLOCK_TAGS = new Set(['div', 'p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'tr']);
+    const parts: string[] = [];
+
+    const walk = (node: Node): void => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        parts.push((node.textContent ?? '').replace(/ /g, ' '));
+        return;
+      }
+      if (!(node instanceof HTMLElement)) return;
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'br') { parts.push('\n'); return; }
+      Array.from(node.childNodes).forEach(walk);
+      if (BLOCK_TAGS.has(tag)) parts.push('\n');
+    };
+
+    Array.from(container.childNodes).forEach(walk);
+
+    return parts.join('')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
   }
 
-  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 };
 
 export const plainTextToHtml = (value?: string) =>
@@ -130,7 +155,7 @@ const htmlToPptTextRuns = (
     text: string,
     marks: { bold: boolean; italic: boolean; underline: boolean },
   ) => {
-    const normalized = text.replace(/\u00A0/g, ' ');
+    const normalized = text.replace(/ /g, ' ');
     if (!normalized) return;
 
     if (pendingBreak) {
@@ -232,7 +257,7 @@ const isScriptureLine = (line: string) =>
   /^📖\s/.test(line);
 
 const isQuoteLine = (line: string) =>
-  /^["“].+["”]$/.test(line) || /^\(.+\)$/.test(line);
+  /^[""].+[""]$/.test(line) || /^\(.+\)$/.test(line);
 
 export const generateSlidesFromOutline = (rawText: string, fallbackTitle = 'Generated Presentation'): { title: string; slides: PresentationSlide[] } => {
   const normalizedBlocks = rawText
@@ -357,7 +382,7 @@ export const generateSlidesFromOutline = (rawText: string, fallbackTitle = 'Gene
 
 export const slidesToSourceText = (slides: PresentationSlide[]) =>
   slides
-    .map((slide) => (slide.text || htmlToPlainText(slide.html)).trim().replace(/\n[ \t]*\n/g, '\n\u200B\n'))
+    .map((slide) => (slide.text || htmlToPlainText(slide.html)).trim().replace(/\n[ \t]*\n/g, '\n​\n'))
     .filter(Boolean)
     .join(slideSeparator);
 
@@ -370,7 +395,7 @@ export const deserializeSlides = (slideData?: string, sourceText?: string): Pres
       if (Array.isArray(parsed)) {
         return parsed.map((slide, index) => createPresentationSlide({
           id: typeof slide.id === 'number' ? slide.id : Date.now() + index,
-          text: typeof slide.text === 'string' ? slide.text.replace(/\u200B/g, '') : htmlToPlainText(typeof slide.html === 'string' ? slide.html : ''),
+          text: typeof slide.text === 'string' ? slide.text.replace(/​/g, '') : htmlToPlainText(typeof slide.html === 'string' ? slide.html : ''),
           html: typeof slide.html === 'string' ? slide.html : undefined,
           imageUrl: typeof slide.imageUrl === 'string' ? slide.imageUrl : undefined,
           format: slide.format ?? createDefaultSlideFormat(),
@@ -388,7 +413,7 @@ export const deserializeSlides = (slideData?: string, sourceText?: string): Pres
     .filter((block) => block.trim().length > 0)
     .map((text, index) => createPresentationSlide({
       id: Date.now() + index,
-      text: text.replace(/\u200B/g, ''),
+      text: text.replace(/​/g, ''),
     }));
 };
 
@@ -487,6 +512,14 @@ export const exportSlidesToPptx = async ({
           y: 0,
           w: 13.333,
           h: 7.5,
+        });
+        slide.addShape(pptx.ShapeType.rect, {
+          x: 0,
+          y: 0,
+          w: 13.333,
+          h: 7.5,
+          fill: { color: '000000', transparency: 75 },
+          line: { color: '000000', transparency: 100 },
         });
       }
       const exportText = (slideData.text || htmlToPlainText(slideData.html)).trim();

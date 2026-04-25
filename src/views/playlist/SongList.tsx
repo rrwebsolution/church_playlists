@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { 
   ArrowLeft, Play, PlayCircle, PauseCircle, 
   Trash2, ChevronDown, Languages, Search, GripVertical, Copy, Edit3, Check, Guitar, PlusCircle, CheckCircle2, Upload,
@@ -9,7 +9,6 @@ import { PlayingVisualizer } from './FolderList';
 import type { PlaylistFolder, Song } from '../types';
 import Swal from 'sweetalert2';
 import axiosInstance from '../../plugin/axios';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { fetchSongResourcesSmart } from './songData';
 
@@ -20,166 +19,6 @@ const Toast = Swal.mixin({
   timer: 2000,
   timerProgressBar: true,
 });
-
-// --- UPGRADED PROXY ENGINE ---
-const fetchWithProxy = async (targetUrl: string) => {
-  const proxies = [
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-    `https://cors.sh/${targetUrl}`,
-    `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
-  ];
-
-  for (const proxy of proxies) {
-    try {
-      const res = await axios.get(proxy, { timeout: 8000 });
-      const dataString = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data);
-      if (dataString.includes("Forbidden") || dataString.includes("Cloudflare") || dataString.includes("error code: 1020")) {
-        console.warn(`Proxy ${proxy} was blocked.`);
-        continue;
-      }
-      return res; 
-    } catch (e) {
-      console.warn(`Proxy failed: ${proxy}`, e);
-    }
-  }
-  throw new Error("All proxies failed.");
-};
-
-
-
-const extractUGJson = (html: string) => {
-  try {
-    const dataMatch = html.match(/class="js-store" data-content="([^"]+)"/);
-    if (dataMatch && dataMatch[1]) {
-      const decoded = dataMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&apos;/g, "'");
-      return JSON.parse(decoded);
-    }
-    const scriptMatch = html.match(/window\.UGAPP\.store\.page\s*=\s*(\{.+?\});/);
-    if (scriptMatch && scriptMatch[1]) return JSON.parse(scriptMatch[1]);
-  } catch (e) { }
-  return null;
-};
-
-// --- 🔥 BAG-O NGA "API": TheWorshipSongs.com SCRAPER 🔥 ---
-const fetchLyricsFromWorshipSongs = async (_artist: string, title: string) => {
-  try {
-    // 1. Himuon ang URL slug (e.g., "Imong Gunit" -> "imong-gunit")
-    const slug = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-');
-    const targetUrl = `https://www.theworshipsongs.com/parts/lyrics/${slug}-lyrics.html`;
-
-    // 2. Kuhaon ang HTML content sa page
-    const response = await fetchWithProxy(targetUrl);
-    
-    // 3. Pangitaon ang div nga naay sulod nga lyrics
-    const contentMatch = response.data.match(/<div class="post-body entry-content[^"]*">([\s\S]*?)<\/div>/i);
-
-    if (contentMatch && contentMatch[1]) {
-      // 4. Limpyuhan ang nakuha nga HTML
-      let lyrics = contentMatch[1]
-        .replace(/<br\s*\/?>/gi, '\n') // Himuong newline ang <br>
-        .replace(/<p><strong>.*?<\/strong><\/p>/gi, '') // Tangtangon ang mga header sa sulod
-        .replace(/<[^>]+>/g, '') // Tangtangon ang tanang ubang HTML tags
-        .replace(/&#\d+;/g, (match:any) => String.fromCharCode(parseInt(match.substring(2, match.length - 1)))) // I-decode ang HTML entities
-        .replace(/&nbsp;/g, ' ')
-        .trim();
-        
-      // Kuhaon ang mga junk sa sinugdanan
-      const firstRealLineIndex = lyrics.search(/\n\s*\n/);
-      if (firstRealLineIndex !== -1) {
-          lyrics = lyrics.substring(firstRealLineIndex).trim();
-      }
-
-      if (lyrics.length > 50) {
-        return lyrics;
-      }
-    }
-  } catch (e) {
-    console.warn("TheWorshipSongs.com fetch failed:", e);
-  }
-  return "";
-};
-
-
-// --- MULTI-LAYER LYRICS ENGINE (GI-UPDATE) ---
-const fetchLyricsSmart = async (artist: string, title: string) => {
-  // 1. 🔥 UNAHON ANG BAG-O NGA TheWorshipSongs.com
-  const worshipSongsLyrics = await fetchLyricsFromWorshipSongs(artist, title);
-  if (worshipSongsLyrics) return worshipSongsLyrics;
-
-  const query = encodeURIComponent(`${artist} ${title}`);
-
-  try { // 2. LRCLib (Direct)
-    const res = await axios.get(`https://lrclib.net/api/search?q=${query}`, { timeout: 5000 });
-    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-    const bestMatch = data?.find((d: any) => (d.plainLyrics || d.syncedLyrics));
-    if (bestMatch && (bestMatch.plainLyrics || bestMatch.syncedLyrics)) {
-      return (bestMatch.plainLyrics || bestMatch.syncedLyrics).replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '').trim();
-    }
-  } catch (e) {}
-
-  try { // 3. Popcat (Direct)
-    const res = await axios.get(`https://api.popcat.xyz/lyrics?song=${query}`, { timeout: 5000 });
-    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-    if (data?.lyrics && data.lyrics.length > 50) return data.lyrics.trim();
-  } catch (e) {}
-
-  try { // 4. ChristianLyricsOnline (with Proxy)
-    const searchUrl = `https://christianlyricsonline.net/?s=${query}`;
-    const searchRes = await fetchWithProxy(searchUrl);
-    const links = searchRes.data.match(/href="(https:\/\/christianlyricsonline\.net\/(?:lyrics\/)?[^/"]+\/)"/g);
-    if (links) {
-      const postUrl = links.find((link:any) => !/category|tag|about|author/.test(link))?.replace(/href="|"/g, '');
-      if (postUrl) {
-        const articleRes = await fetchWithProxy(postUrl);
-        const contentMatch = articleRes.data.match(/<div class="[^"]*entry-content[^"]*">([\s\S]*?)<\/div>/i);
-        if (contentMatch && contentMatch[1]) {
-          let rawLyrics = contentMatch[1].replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&#8217;|&#039;/g, "'").replace(/&#8220;|&#8221;/g, '"').replace(/&nbsp;/g, ' ').replace(/Share this:[\s\S]*/gi, ''); 
-          if (rawLyrics.length > 50) return rawLyrics.trim();
-        }
-      }
-    }
-  } catch (e) {}
-
-  return "";
-};
-
-// --- MULTI-LAYER CHORDS ENGINE ---
-const fetchChordsSmart = async (artist: string, title: string) => {
-  const query = encodeURIComponent(`${artist} ${title}`);
-  try {
-    const slug = `${title}-${artist}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const pnwUrl = `https://pnwchords.com/${slug}/`;
-    const resPnw = await fetchWithProxy(pnwUrl);
-    const matchPre = resPnw.data.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-    if (matchPre && matchPre[1]) {
-      return matchPre[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&#039;/g, "'").trim();
-    }
-  } catch(e) {}
-
-  try {
-    const chordSearchUrl = `https://www.ultimate-guitar.com/search.php?search_type=title&value=${query}`;
-    const resC = await fetchWithProxy(chordSearchUrl);
-    const store = extractUGJson(resC.data);
-    if (store) {
-      const results = store?.store?.page?.data?.results || store?.data?.results || [];
-      const chordTab = results.find((r: any) => r.type === 'Chords' && r.tab_url);
-      if (chordTab && chordTab.tab_url) {
-        const tabRes = await fetchWithProxy(chordTab.tab_url);
-        const tabStore = extractUGJson(tabRes.data);
-        if (tabStore) {
-          const rawContent = tabStore?.store?.page?.data?.tab_view?.wiki_tab?.content || tabStore?.data?.tab_view?.wiki_tab?.content || "";
-          if (rawContent) return rawContent.replace(/\[\/?(ch|tab)\]/g, '').replace(/&#039;/g, "'").trim();
-        }
-      }
-    }
-  } catch(e) {}
-  return "";
-};
-
-void fetchLyricsSmart;
-void fetchChordsSmart;
 
 // --- HELPER PARA SA PLAIN TEXT LYRICS ---
 const getCleanLyricsText = (lyrics: string) => {
@@ -318,6 +157,16 @@ const stripChordsForEdit = (text: string) => {
   }).join('\n').trim();
 };
 
+const buildSongSearchLinks = (artist: string, title: string) => {
+  const query = `${artist} ${title}`.trim();
+  return {
+    lyrics: `https://www.google.com/search?q=${encodeURIComponent(`${query} lyrics`)}`,
+    chords: `https://www.google.com/search?q=${encodeURIComponent(`${query} chords`)}`,
+    youtube: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+    ultimateGuitar: `https://www.ultimate-guitar.com/search.php?search_type=title&value=${encodeURIComponent(query)}`,
+  };
+};
+
 export default function SongList(props: any) {
   const navigate = useNavigate();
   const { 
@@ -354,14 +203,6 @@ export default function SongList(props: any) {
     : (activeFolder?.songs || []);
   const hasSelectedSongs = selectedSongIds.length > 0;
   const areAllSongsSelected = !isLocalSearch && songsToDisplay.length > 0 && selectedSongIds.length === songsToDisplay.length;
-
-  useEffect(() => {
-    if (isLocalSearch) return;
-    const generatingSong = songsToDisplay.find((song: Song) => song.isGenerating);
-    if (generatingSong) {
-      setExpandedSongId(generatingSong.id);
-    }
-  }, [isLocalSearch, songsToDisplay]);
 
   const onDragEnd = (result: any) => {
     if (!result.destination || isLocalSearch || hasSelectedSongs) return;
@@ -588,6 +429,38 @@ export default function SongList(props: any) {
     printWindow.document.close();
   };
 
+  const openSongSearch = (song: Song, target: 'lyrics' | 'chords' | 'youtube' | 'ultimateGuitar' = activeTab === 'chords' ? 'chords' : 'lyrics') => {
+    const links = buildSongSearchLinks(song.artist || '', song.title || '');
+    window.open(links[target], '_blank', 'noopener,noreferrer');
+  };
+
+  const promptSongSearch = async (song: Song, defaultTarget: 'lyrics' | 'chords' | 'youtube' | 'ultimateGuitar' = activeTab === 'chords' ? 'chords' : 'lyrics') => {
+    const { value } = await Swal.fire({
+      title: 'Search Song Online',
+      input: 'radio',
+      inputValue: defaultTarget,
+      inputOptions: {
+        lyrics: 'Google Lyrics',
+        chords: 'Google Chords',
+        ultimateGuitar: 'Ultimate Guitar',
+        youtube: 'YouTube Search',
+      },
+      inputValidator: (value) => {
+        if (!value) return 'Please choose where to search.';
+        return null;
+      },
+      showCancelButton: true,
+      confirmButtonText: 'Open Search',
+      confirmButtonColor: '#4f46e5',
+      cancelButtonText: 'Cancel',
+      customClass: { popup: 'rounded-3xl' },
+    });
+
+    if (value) {
+      openSongSearch(song, value as 'lyrics' | 'chords' | 'youtube' | 'ultimateGuitar');
+    }
+  };
+
   const handleManualFetch = async (song: Song) => {
     const rawTitle = song.title || '';
     const rawAuthor = song.artist || '';
@@ -620,47 +493,27 @@ export default function SongList(props: any) {
       }
     }
 
-    const { value: formValues } = await Swal.fire({
-      title: '<span style="font-weight: 900; color: #4f46e5; display: flex; align-items: center; justify-content: center; gap: 8px;"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg> Get Data Online</span>',
-      html: `
-        <div style="text-align: left; padding: 10px 5px;">
-          <p style="font-size: 13px; color: #71717a; margin-bottom: 20px; font-weight: 500; text-align: center;">Make sure the artist and song title are clean to get the most accurate lyrics and chords.</p>
-          <div style="margin-bottom: 16px;">
-            <label style="display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #4f46e5; margin-bottom: 6px;">Artist Name</label>
-            <input id="swal-artist" class="swal2-input" style="width: 100%; margin: 0; box-sizing: border-box; border-radius: 12px; background: #f4f4f5; border: 1px solid #e4e4e7; color: #3f3f46; font-weight: 600;" placeholder="e.g. Hillsong Worship" value="${guessedArtist.replace(/"/g, '&quot;')}">
-          </div>
-          <div>
-            <label style="display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #4f46e5; margin-bottom: 6px;">Song Title</label>
-            <input id="swal-title" class="swal2-input" style="width: 100%; margin: 0; box-sizing: border-box; border-radius: 12px; background: #f4f4f5; border: 1px solid #e4e4e7; color: #3f3f46; font-weight: 600;" placeholder="e.g. What a Beautiful Name" value="${guessedTitle.replace(/"/g, '&quot;')}">
-          </div>
-          <button id="swal-swap-btn" type="button" style="margin-top: 14px; width: 100%; padding: 10px; background: #f4f4f5; border: 1.5px dashed #a1a1aa; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #71717a; transition: all 0.2s;">⇄ Swap Artist &amp; Title</button>
-        </div>
-      `,
-      focusConfirm: false,
-      showCancelButton: true,
-      confirmButtonText: '<span style="font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Search Online</span>',
-      cancelButtonText: '<span style="font-weight: bold; letter-spacing: 1px; text-transform: uppercase;">Cancel</span>',
-      confirmButtonColor: '#4f46e5',
-      cancelButtonColor: '#a1a1aa',
-      customClass: { popup: 'rounded-3xl' },
-      didOpen: () => {
-        document.getElementById('swal-swap-btn')?.addEventListener('click', () => {
-          const artistEl = document.getElementById('swal-artist') as HTMLInputElement;
-          const titleEl = document.getElementById('swal-title') as HTMLInputElement;
-          [artistEl.value, titleEl.value] = [titleEl.value, artistEl.value];
-        });
-      },
-      preConfirm: () => [
-        (document.getElementById('swal-artist') as HTMLInputElement).value,
-        (document.getElementById('swal-title') as HTMLInputElement).value,
-      ],
-    });
-
-    if (!formValues) return;
-    const [artist, title] = formValues;
+    const artist = guessedArtist || rawAuthor;
+    const title = guessedTitle || rawTitle;
+    if (!title.trim()) {
+      Toast.fire({ icon: 'warning', title: 'Song title is required' });
+      return;
+    }
 
     setFetchingSongId(song.id);
-    const { lyrics: finalLyrics, chords: chordsResult } = await fetchSongResourcesSmart(artist, title);
+    let finalLyrics = "";
+    let chordsResult = "";
+
+    try {
+      const result = await fetchSongResourcesSmart(artist, title);
+      finalLyrics = result.lyrics;
+      chordsResult = result.chords;
+    } catch (_error) {
+      Toast.fire({ icon: 'warning', title: 'Auto-generation failed' });
+      return;
+    } finally {
+      setFetchingSongId(null);
+    }
 
     setFolders((prev: PlaylistFolder[]) => prev.map(folder => {
       if (folder.id === activeFolderId) {
@@ -668,29 +521,32 @@ export default function SongList(props: any) {
       }
       return folder;
     }));
-    setFetchingSongId(null);
 
-    // UPGRADED SWAL NOTIFICATIONS
     if (finalLyrics && chordsResult) {
-      Swal.fire({ icon: 'success', title: 'Found it!', html: `<p style="font-size: 14px; font-weight: 500; color: #3f3f46;">Successfully downloaded both <b>Lyrics</b> and <b>Chords</b>.</p>`, timer: 3000, showConfirmButton: false });
+      Toast.fire({ icon: 'success', title: 'Lyrics + chords generated!' });
       setActiveTab('chords');
     } else if (finalLyrics || chordsResult) {
       const foundItem = finalLyrics ? 'Lyrics' : 'Chords';
-      const missingItem = finalLyrics ? 'Chords' : 'Lyrics';
-      Swal.fire({ icon: 'info', title: 'Partial Data Found', html: `<div style="text-align: center;"><p style="font-size: 15px; font-weight: bold; color: #3f3f46;">We found the <span style="color: #4f46e5;">${foundItem}</span>!</p><p style="font-size: 13px; color: #71717a; margin-top: 8px;">However, we couldn't find the <b>${missingItem}</b> online. You may need to paste the ${missingItem.toLowerCase()} manually.</p></div>`, confirmButtonText: 'Okay, got it', confirmButtonColor: '#4f46e5', customClass: { popup: 'rounded-3xl' } });
+      Toast.fire({ icon: 'info', title: `${foundItem} generated` });
       setActiveTab(chordsResult && !finalLyrics ? 'chords' : 'lyrics');
     } else {
-      const { isConfirmed } = await Swal.fire({ 
+      const result = await Swal.fire({ 
         icon: 'warning',
         title: 'Data Not Found Online', 
-        html: `<p style="font-size: 14px; color: #71717a;">The automated search failed. You can search on Google and paste the lyrics or chords yourself.</p>`, 
+        html: `<p style="font-size: 14px; color: #71717a;">The automated search failed. You can open a web search for this song or paste the lyrics/chords manually.</p>`, 
         showCancelButton: true,
+        showDenyButton: true,
         confirmButtonText: 'Edit Manually',
+        denyButtonText: 'Search Web',
         cancelButtonText: 'Close',
         confirmButtonColor: '#4f46e5',
+        denyButtonColor: '#0f766e',
         customClass: { popup: 'rounded-3xl' }
       });
-      if (isConfirmed) {
+      if (result.isDenied) {
+        await promptSongSearch(song, activeTab === 'chords' ? 'chords' : 'lyrics');
+      }
+      if (result.isConfirmed) {
         setEditingId(song.id);
         const rawText = song[activeTab] || "";
         const textToEdit = activeTab === 'lyrics' ? stripChordsForEdit(rawText) : rawText;

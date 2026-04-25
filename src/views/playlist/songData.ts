@@ -1,65 +1,55 @@
 import axios from 'axios';
-
-const fetchWithProxy = async (targetUrl: string) => {
-  const proxies = [
-    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-    `https://cors.sh/${targetUrl}`,
-    `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
-  ];
-
-  for (const proxy of proxies) {
-    try {
-      const res = await axios.get(proxy, { timeout: 8000 });
-      const dataString = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data);
-      if (dataString.includes('Forbidden') || dataString.includes('Cloudflare') || dataString.includes('error code: 1020')) {
-        continue;
-      }
-      return res;
-    } catch (_error) {
-      // Try the next proxy.
-    }
-  }
-
-  throw new Error('All proxies failed.');
-};
-
-export const cleanUpSongData = (rawArtist: string, rawTitle: string) => {
-  let title = rawTitle;
-  let artist = rawArtist;
-
-  if (title.includes('|')) {
-    const parts = title.split('|');
-    title = parts[0];
-    artist = parts[1] || artist;
-  } else if (title.includes('-')) {
-    const parts = title.split('-');
-    artist = parts[0];
-    title = parts[1];
-  }
-
-  title = title.replace(/\([^)]*\)|\[[^\]]*\]/g, '');
-  artist = artist.replace(/\([^)]*\)|\[[^\]]*\]/g, '');
-
-  const junkRegex = /(Official|Music Video|Lyric Video|'|Lyrics|Wish 107.5 Bus|Music|TV|Live|Acoustic|Performance|HD|HQ|Audio|VEVO|Topic|Channel|in Melbourne|Cover|\bVideo\b)/gi;
-  title = title.replace(junkRegex, '').trim();
-  artist = artist.replace(junkRegex, '').trim();
-
-  return { cleanArtist: artist, cleanTitle: title };
-};
-
-const uniqueNonEmpty = (...values: string[]) => {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
-};
+import axiosInstance from '../../plugin/axios';
 
 const normalizeSpaces = (value: string) => value.replace(/\s+/g, ' ').trim();
+const titleStopWords = new Set(['a', 'an', 'and', 'at', 'by', 'for', 'from', 'in', 'live', 'lyrics', 'music', 'of', 'official', 'on', 'song', 'the', 'to', 'video', 'with']);
+
+const uniqueNonEmpty = (...values: string[]) => {
+  return Array.from(new Set(values.map((value) => normalizeSpaces(value)).filter(Boolean)));
+};
+
+const normalizeSearchText = (value: string) => normalizeSpaces(
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\bthik\b/g, 'tihik')
+);
+
+const titleTerms = (title: string) => {
+  return Array.from(new Set(
+    normalizeSearchText(title)
+      .split(/\s+/)
+      .filter((word) => word.length >= 3 && !titleStopWords.has(word))
+  ));
+};
+
+const titleMatchRatio = (haystack: string, title: string) => {
+  const terms = titleTerms(title);
+  if (terms.length === 0) return 0;
+
+  const normalizedHaystack = ` ${normalizeSearchText(haystack)} `;
+  const hits = terms.filter((term) => normalizedHaystack.includes(` ${term} `)).length;
+  return hits / terms.length;
+};
+
+const hasMeaningfulArtist = (artist: string) => {
+  const normalizedArtist = normalizeSearchText(stripDecorators(artist));
+  return Boolean(normalizedArtist) && !/^(unknown|unknown artist|official|topic|channel)$/.test(normalizedArtist);
+};
+
+const isAmbiguousTitle = (title: string) => titleTerms(title).length <= 1;
+
+const looksLikeRequestedSong = (candidateTitle: string, expectedTitle: string) => {
+  const terms = titleTerms(expectedTitle);
+  const ratio = titleMatchRatio(candidateTitle, expectedTitle);
+  return ratio >= 0.6 || (terms.length <= 2 && ratio >= 0.5);
+};
 
 const stripDecorators = (value: string) => normalizeSpaces(
   value
     .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
     .replace(/\b(feat|ft|featuring|with)\.?\s+[^-|/]+/gi, ' ')
-    .replace(/\b(official|lyrics?|lyric video|music video|video|audio|live|acoustic|performance|cover|remix|version)\b/gi, ' ')
+    .replace(/\b(official|lyrics?|lyric video|music video|video|audio|live|acoustic|performance|cover|remix|version|hd|hq|vevo|topic|channel|wish 107\.5 bus|wish 107\.5)\b/gi, ' ')
     .replace(/[|/_]+/g, ' ')
 );
 
@@ -74,6 +64,44 @@ const splitSongTitle = (value: string) => {
   return [normalized];
 };
 
+export const cleanUpSongData = (rawArtist: string, rawTitle: string) => {
+  let title = normalizeSpaces(rawTitle || '');
+  let artist = normalizeSpaces(rawArtist || '');
+
+  // Only split human separators like "Artist - Title"; keep title words such as "TIHIK-THIK" intact.
+  const separatedTitle = title.match(/^(.+?)\s(-|\||\/|:)\s(.+)$/);
+  if (separatedTitle) {
+    const firstPart = stripDecorators(separatedTitle[1]);
+    const separator = separatedTitle[2];
+    const secondPart = stripDecorators(separatedTitle[3]);
+    const artistHint = stripDecorators(artist).toLowerCase().slice(0, 5);
+    const secondLooksLikeArtist = /\b(band|church|collective|music|worship|team|singers|ministry|ministries)$\b/i.test(secondPart);
+
+    if (artistHint && secondPart.toLowerCase().includes(artistHint)) {
+      title = firstPart;
+      artist = secondPart;
+    } else if (artistHint && firstPart.toLowerCase().includes(artistHint)) {
+      artist = firstPart;
+      title = secondPart;
+    } else if (!artist || /unknown artist/i.test(artist)) {
+      if (separator === '|' || separator === '/' || secondLooksLikeArtist) {
+        title = firstPart;
+        artist = secondPart;
+      } else {
+        artist = firstPart;
+        title = secondPart;
+      }
+    } else {
+      title = firstPart;
+    }
+  }
+
+  return {
+    cleanArtist: stripDecorators(artist),
+    cleanTitle: stripDecorators(title),
+  };
+};
+
 const buildTitleCandidates = (rawTitle: string, cleanTitle: string) => {
   const parts = uniqueNonEmpty(rawTitle, cleanTitle).flatMap(splitSongTitle);
   const decorated = parts.flatMap((part) => [part, stripDecorators(part)]);
@@ -82,17 +110,52 @@ const buildTitleCandidates = (rawTitle: string, cleanTitle: string) => {
 
 const buildArtistCandidates = (rawArtist: string, cleanArtist: string, rawTitle: string) => {
   const titleParts = splitSongTitle(rawTitle);
-  const possibleArtistFromTitle = titleParts.length > 1 ? titleParts[0] : '';
+  const possibleArtistsFromTitle = titleParts.length > 1 ? [titleParts[1], titleParts[0]] : [];
   const candidates = [
     cleanArtist,
     rawArtist,
     stripDecorators(cleanArtist),
     stripDecorators(rawArtist),
-    stripDecorators(possibleArtistFromTitle),
+    ...possibleArtistsFromTitle.map(stripDecorators),
     '',
   ];
 
   return uniqueNonEmpty(...candidates);
+};
+
+const buildBackendCandidates = (
+  rawArtist: string,
+  rawTitle: string,
+  cleanArtist: string,
+  cleanTitle: string,
+  artistCandidates: string[],
+  titleCandidates: string[],
+) => {
+  const seen = new Set<string>();
+  const candidates: Array<{ artist: string; title: string }> = [];
+
+  const addCandidate = (artist: string, title: string) => {
+    const nextArtist = normalizeSpaces(artist);
+    const nextTitle = normalizeSpaces(title);
+    if (!nextTitle) return;
+
+    const key = `${nextArtist.toLowerCase()}|${nextTitle.toLowerCase()}`;
+    if (seen.has(key)) return;
+
+    seen.add(key);
+    candidates.push({ artist: nextArtist, title: nextTitle });
+  };
+
+  addCandidate(cleanArtist, cleanTitle);
+  addCandidate(rawArtist, rawTitle);
+
+  for (const title of titleCandidates.slice(0, 4)) {
+    for (const artist of artistCandidates.slice(0, 3)) {
+      addCandidate(artist, title);
+    }
+  }
+
+  return candidates.slice(0, 10);
 };
 
 const scoreLyrics = (lyrics: string) => {
@@ -107,55 +170,41 @@ const scoreChords = (chords: string) => {
   return chords.length + chordMarkers * 20;
 };
 
-const extractUGJson = (html: string) => {
-  try {
-    const dataMatch = html.match(/class="js-store" data-content="([^"]+)"/);
-    if (dataMatch && dataMatch[1]) {
-      const decoded = dataMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&apos;/g, "'");
-      return JSON.parse(decoded);
-    }
-
-    const scriptMatch = html.match(/window\.UGAPP\.store\.page\s*=\s*(\{.+?\});/);
-    if (scriptMatch && scriptMatch[1]) {
-      return JSON.parse(scriptMatch[1]);
-    }
-  } catch (_error) {
-    return null;
-  }
-
-  return null;
+const plainLyricsFromResult = (result: any) => {
+  const lyrics = result?.plainLyrics || result?.syncedLyrics || '';
+  return typeof lyrics === 'string' ? lyrics.replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '').trim() : '';
 };
 
-const fetchLyricsFromWorshipSongs = async (_artist: string, title: string) => {
-  try {
-    const slug = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-');
-    const targetUrl = `https://www.theworshipsongs.com/parts/lyrics/${slug}-lyrics.html`;
-    const response = await fetchWithProxy(targetUrl);
-    const contentMatch = response.data.match(/<div class="post-body entry-content[^"]*">([\s\S]*?)<\/div>/i);
+const pickBestStructuredLyrics = (data: any, artist: string, title: string) => {
+  if (!Array.isArray(data)) return '';
 
-    if (contentMatch && contentMatch[1]) {
-      let lyrics = contentMatch[1]
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<p><strong>.*?<\/strong><\/p>/gi, '')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&#\d+;/g, (match: string) => String.fromCharCode(parseInt(match.substring(2, match.length - 1), 10)))
-        .replace(/&nbsp;/g, ' ')
-        .trim();
+  let bestLyrics = '';
+  let bestScore = 0;
 
-      const firstRealLineIndex = lyrics.search(/\n\s*\n/);
-      if (firstRealLineIndex !== -1) {
-        lyrics = lyrics.substring(firstRealLineIndex).trim();
-      }
+  for (const result of data) {
+    const lyrics = plainLyricsFromResult(result);
+    if (!lyrics) continue;
 
-      if (lyrics.length > 50) {
-        return lyrics;
-      }
+    const resultTitle = String(result?.trackName || result?.name || result?.title || '');
+    if (resultTitle && !looksLikeRequestedSong(resultTitle, title)) continue;
+
+    const resultArtist = String(result?.artistName || result?.artist || '');
+    const shouldRequireArtist = hasMeaningfulArtist(artist) && isAmbiguousTitle(title);
+    const artistRatio = resultArtist ? titleMatchRatio(resultArtist, artist) : 0;
+    if (shouldRequireArtist && artistRatio < 0.5) continue;
+
+    let nextScore = scoreLyrics(lyrics) + titleMatchRatio(resultTitle, title) * 500;
+    if (artist && resultArtist) {
+      nextScore += artistRatio * 400;
     }
-  } catch (_error) {
-    return '';
+
+    if (nextScore > bestScore) {
+      bestLyrics = lyrics;
+      bestScore = nextScore;
+    }
   }
 
-  return '';
+  return bestLyrics;
 };
 
 const fetchLyricsFromLrclibStructured = async (artist: string, title: string) => {
@@ -170,16 +219,23 @@ const fetchLyricsFromLrclibStructured = async (artist: string, title: string) =>
         'Lrclib-Client': 'church-system',
       },
     });
+
     const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-    const bestMatch = data?.find((d: any) => d.plainLyrics || d.syncedLyrics);
-    if (bestMatch && (bestMatch.plainLyrics || bestMatch.syncedLyrics)) {
-      return (bestMatch.plainLyrics || bestMatch.syncedLyrics).replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '').trim();
-    }
+    return pickBestStructuredLyrics(data, artist, title);
   } catch (_error) {
     return '';
   }
+};
 
-  return '';
+const fetchLyricsFromLrclibQuery = async (artist: string, title: string) => {
+  try {
+    const query = encodeURIComponent(`${artist} ${title}`.trim());
+    const res = await axios.get(`https://lrclib.net/api/search?q=${query}`, { timeout: 5000 });
+    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+    return pickBestStructuredLyrics(data, artist, title);
+  } catch (_error) {
+    return '';
+  }
 };
 
 const fetchLyricsFromLyricsOvh = async (artist: string, title: string) => {
@@ -202,78 +258,23 @@ const fetchLyricsFromLyricsOvh = async (artist: string, title: string) => {
   return '';
 };
 
-export const fetchLyricsSmart = async (artist: string, title: string) => {
-  const worshipSongsLyrics = await fetchLyricsFromWorshipSongs(artist, title);
-  if (worshipSongsLyrics) {
-    return worshipSongsLyrics;
-  }
-
-  const lrclibStructuredLyrics = await fetchLyricsFromLrclibStructured(artist, title);
-  if (lrclibStructuredLyrics) {
-    return lrclibStructuredLyrics;
-  }
-
-  const query = encodeURIComponent(`${artist} ${title}`);
-
+const fetchLyricsFromPopcat = async (artist: string, title: string) => {
   try {
-    const res = await axios.get(`https://lrclib.net/api/search?q=${query}`, { timeout: 5000 });
-    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-    const bestMatch = data?.find((d: any) => d.plainLyrics || d.syncedLyrics);
-    if (bestMatch && (bestMatch.plainLyrics || bestMatch.syncedLyrics)) {
-      return (bestMatch.plainLyrics || bestMatch.syncedLyrics).replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '').trim();
-    }
-  } catch (_error) {
-    // Try the next source.
-  }
-
-  const lyricsOvhLyrics = await fetchLyricsFromLyricsOvh(artist, title);
-  if (lyricsOvhLyrics) {
-    return lyricsOvhLyrics;
-  }
-
-  try {
+    const query = encodeURIComponent(`${artist} ${title}`.trim());
     const res = await axios.get(`https://api.popcat.xyz/lyrics?song=${query}`, { timeout: 5000 });
     const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+    const resultTitle = String(data?.title || data?.song || '');
+    if (!resultTitle || !looksLikeRequestedSong(resultTitle, title)) {
+      return '';
+    }
+
+    const resultArtist = String(data?.artist || data?.artistName || '');
+    if (hasMeaningfulArtist(artist) && isAmbiguousTitle(title) && titleMatchRatio(resultArtist, artist) < 0.5) {
+      return '';
+    }
+
     if (data?.lyrics && data.lyrics.length > 50) {
       return data.lyrics.trim();
-    }
-  } catch (_error) {
-    // Try the next source.
-  }
-
-  try {
-    const res = await fetchWithProxy(`https://some-random-api.com/lyrics?title=${query}`);
-    const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-    if (data?.lyrics && data.lyrics.length > 50) {
-      return data.lyrics.trim();
-    }
-  } catch (_error) {
-    // Try the next source.
-  }
-
-  try {
-    const searchUrl = `https://christianlyricsonline.net/?s=${query}`;
-    const searchRes = await fetchWithProxy(searchUrl);
-    const links = searchRes.data.match(/href="(https:\/\/christianlyricsonline\.net\/(?:lyrics\/)?[^/"]+\/)"/g);
-    if (links) {
-      const postUrl = links.find((link: string) => !/category|tag|about|author/.test(link))?.replace(/href="|"/g, '');
-      if (postUrl) {
-        const articleRes = await fetchWithProxy(postUrl);
-        const contentMatch = articleRes.data.match(/<div class="[^"]*entry-content[^"]*">([\s\S]*?)<\/div>/i);
-        if (contentMatch && contentMatch[1]) {
-          const rawLyrics = contentMatch[1]
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<[^>]+>/g, '')
-            .replace(/&#8217;|&#039;/g, "'")
-            .replace(/&#8220;|&#8221;/g, '"')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/Share this:[\s\S]*/gi, '');
-
-          if (rawLyrics.length > 50) {
-            return rawLyrics.trim();
-          }
-        }
-      }
     }
   } catch (_error) {
     return '';
@@ -282,91 +283,18 @@ export const fetchLyricsSmart = async (artist: string, title: string) => {
   return '';
 };
 
-export const fetchChordsSmart = async (artist: string, title: string) => {
-  const query = encodeURIComponent(`${artist} ${title}`);
-  const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+export const fetchLyricsSmart = async (artist: string, title: string) => {
+  const directResults = await Promise.all([
+    fetchLyricsFromLrclibStructured(artist, title),
+    fetchLyricsFromLrclibQuery(artist, title),
+    fetchLyricsFromLyricsOvh(artist, title),
+    fetchLyricsFromPopcat(artist, title),
+  ]);
 
-  // 1. PNWChords — try multiple slug patterns
-  const pnwSlugs = [
-    toSlug(`${title}-${artist}`),
-    toSlug(title),
-    toSlug(`${artist}-${title}`),
-  ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+  return directResults.reduce((best, next) => scoreLyrics(next) > scoreLyrics(best) ? next : best, '');
+};
 
-  for (const slug of pnwSlugs) {
-    try {
-      const resPnw = await fetchWithProxy(`https://pnwchords.com/${slug}/`);
-      const matchPre = resPnw.data.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-      if (matchPre?.[1]) {
-        const result = matchPre[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&#039;/g, "'").trim();
-        if (result.length > 50) return result;
-      }
-    } catch (_error) { /* try next */ }
-  }
-
-  // 2. E-Chords
-  try {
-    const searchRes = await fetchWithProxy(`https://www.e-chords.com/search-all/${encodeURIComponent(`${title} ${artist}`)}`);
-    const linkMatch = searchRes.data.match(/href="(https:\/\/www\.e-chords\.com\/chords\/[^"]+)"/);
-    if (linkMatch?.[1]) {
-      const tabRes = await fetchWithProxy(linkMatch[1]);
-      const preMatch = tabRes.data.match(/<pre[^>]*id="core"[^>]*>([\s\S]*?)<\/pre>/i)
-        || tabRes.data.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-      if (preMatch?.[1]) {
-        const result = preMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
-        if (result.length > 50) return result;
-      }
-    }
-  } catch (_error) { /* try next */ }
-
-  // 3. AZChords
-  try {
-    const searchRes = await fetchWithProxy(`https://www.azchords.com/search?q=${encodeURIComponent(`${title} ${artist}`)}`);
-    const linkMatch = searchRes.data.match(/href="(https:\/\/www\.azchords\.com\/[^"]+\.html)"/);
-    if (linkMatch?.[1]) {
-      const tabRes = await fetchWithProxy(linkMatch[1]);
-      const preMatch = tabRes.data.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-      if (preMatch?.[1]) {
-        const result = preMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
-        if (result.length > 50) return result;
-      }
-    }
-  } catch (_error) { /* try next */ }
-
-  // 4. Chordie
-  try {
-    const searchRes = await fetchWithProxy(`https://www.chordie.com/result.php?q=${query}`);
-    const linkMatch = searchRes.data.match(/href="(\/chord\.php\?[^"]+)"/);
-    if (linkMatch?.[1]) {
-      const tabRes = await fetchWithProxy(`https://www.chordie.com${linkMatch[1]}`);
-      const preMatch = tabRes.data.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-      if (preMatch?.[1]) {
-        const result = preMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
-        if (result.length > 50) return result;
-      }
-    }
-  } catch (_error) { /* try next */ }
-
-  // 5. Ultimate Guitar
-  try {
-    const resC = await fetchWithProxy(`https://www.ultimate-guitar.com/search.php?search_type=title&value=${query}`);
-    const store = extractUGJson(resC.data);
-    if (store) {
-      const results = store?.store?.page?.data?.results || store?.data?.results || [];
-      const chordTab = results.find((r: any) => r.type === 'Chords' && r.tab_url);
-      if (chordTab?.tab_url) {
-        const tabRes = await fetchWithProxy(chordTab.tab_url);
-        const tabStore = extractUGJson(tabRes.data);
-        if (tabStore) {
-          const rawContent = tabStore?.store?.page?.data?.tab_view?.wiki_tab?.content || tabStore?.data?.tab_view?.wiki_tab?.content || '';
-          if (rawContent) {
-            return rawContent.replace(/\[\/?(ch|tab)\]/g, '').replace(/&#039;/g, "'").trim();
-          }
-        }
-      }
-    }
-  } catch (_error) { /* try next */ }
-
+export const fetchChordsSmart = async (_artist: string, _title: string) => {
   return '';
 };
 
@@ -449,6 +377,7 @@ const translateToEnglish = async (text: string): Promise<string> => {
   const lines = text.split('\n');
   const chunks: string[] = [];
   let current = '';
+
   for (const line of lines) {
     if (current.length + line.length + 1 > 800) {
       if (current) chunks.push(current);
@@ -457,6 +386,7 @@ const translateToEnglish = async (text: string): Promise<string> => {
       current = current ? current + '\n' + line : line;
     }
   }
+
   if (current) chunks.push(current);
 
   const translated: string[] = [];
@@ -470,12 +400,24 @@ const translateToEnglish = async (text: string): Promise<string> => {
       } else {
         translated.push(chunk);
       }
-    } catch {
+    } catch (_error) {
       translated.push(chunk);
     }
   }
 
   return translated.join('\n');
+};
+
+const fetchSongResourcesFromBackend = async (artist: string, title: string) => {
+  try {
+    const res = await axiosInstance.post('playlists/fetch-song-resources', { artist, title });
+    return {
+      lyrics: typeof res.data?.lyrics === 'string' ? res.data.lyrics : '',
+      chords: typeof res.data?.chords === 'string' ? res.data.chords : '',
+    };
+  } catch (_error) {
+    return { lyrics: '', chords: '' };
+  }
 };
 
 export const fetchSongResourcesSmart = async (rawArtist: string, rawTitle: string) => {
@@ -488,38 +430,49 @@ export const fetchSongResourcesSmart = async (rawArtist: string, rawTitle: strin
   let bestLyricsScore = 0;
   let bestChordsScore = 0;
 
-  for (const title of titleCandidates) {
-    for (const artist of artistCandidates) {
-      const [lyricsResult, chordsResult] = await Promise.all([
-        fetchLyricsSmart(artist, title),
-        fetchChordsSmart(artist, title),
-      ]);
-
+  for (const title of titleCandidates.slice(0, 4)) {
+    for (const artist of artistCandidates.slice(0, 3)) {
+      const lyricsResult = await fetchLyricsSmart(artist, title);
       const nextLyricsScore = scoreLyrics(lyricsResult);
-      const nextChordsScore = scoreChords(chordsResult);
 
       if (nextLyricsScore > bestLyricsScore) {
         bestLyrics = lyricsResult;
         bestLyricsScore = nextLyricsScore;
       }
 
-      if (nextChordsScore > bestChordsScore) {
-        bestChords = chordsResult;
-        bestChordsScore = nextChordsScore;
-      }
-
-      if (bestLyricsScore > 200 && bestChordsScore > 200) {
+      if (bestLyricsScore > 220) {
         break;
       }
     }
 
-    if (bestLyricsScore > 200 && bestChordsScore > 200) {
+    if (bestLyricsScore > 220) {
       break;
     }
   }
 
+  const backendCandidates = buildBackendCandidates(rawArtist, rawTitle, cleanArtist, cleanTitle, artistCandidates, titleCandidates);
+  for (const candidate of backendCandidates) {
+    if (bestLyricsScore > 220 && bestChordsScore > 220) {
+      break;
+    }
+
+    const backendFallback = await fetchSongResourcesFromBackend(candidate.artist, candidate.title);
+    const backendLyricsScore = scoreLyrics(backendFallback.lyrics);
+    const backendChordsScore = scoreChords(backendFallback.chords);
+
+    if (backendLyricsScore > bestLyricsScore) {
+      bestLyrics = backendFallback.lyrics;
+      bestLyricsScore = backendLyricsScore;
+    }
+
+    if (backendChordsScore > bestChordsScore) {
+      bestChords = backendFallback.chords;
+      bestChordsScore = backendChordsScore;
+    }
+  }
+
   let finalLyrics = bestLyrics;
-  if (bestChords && (!bestLyrics || bestChords.length > bestLyrics.length + 50)) {
+  if (bestChords && !bestLyrics) {
     finalLyrics = getCleanLyricsText(bestChords);
   }
 

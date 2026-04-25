@@ -691,7 +691,7 @@ export default function Pptpresenatation() {
       );
       const fontSize = Math.max(32, slide.format.fontSize * 2);
       const lineHeight = Math.round(fontSize * 1.22);
-      const plainText = (slide.text || htmlToPlainText(slide.html)).replace(/\r\n/g, '\n').trim();
+      const plainText = htmlToPlainText(slide.html || plainTextToHtml(slide.text)).replace(/\r\n/g, '\n').trim();
       const maxCharsPerLine = Math.max(12, Math.floor(contentWidth / (fontSize * 0.55)));
       const wrappedLines = wrapSvgText(plainText, maxCharsPerLine);
       const lineCount = Math.max(1, wrappedLines.length);
@@ -714,7 +714,7 @@ export default function Pptpresenatation() {
           : paddingX;
       const underlineDecoration = slide.format.underline ? 'text-decoration="underline"' : '';
       const fontStyle = slide.format.italic ? 'italic' : 'normal';
-      const fontWeight = slide.format.bold ? 800 : 500;
+      const fontWeight = slide.format.bold ? 700 : 400;
       const imageX = paddingX;
       const imageWidth = contentWidth;
       const imageMarkup = exportSlideImageUrl
@@ -733,7 +733,7 @@ export default function Pptpresenatation() {
         <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
           <rect width="${width}" height="${height}" fill="${look.background}" />
           ${exportBackgroundImageUrl ? `<image href="${exportBackgroundImageUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" />` : ''}
-          ${exportBackgroundImageUrl ? `<rect width="${width}" height="${height}" fill="rgba(0,0,0,0.18)" />` : ''}
+          ${exportBackgroundImageUrl ? `<rect width="${width}" height="${height}" fill="rgba(0,0,0,0.25)" />` : ''}
           ${imageMarkup}
           <text
             x="${textX}"
@@ -1185,7 +1185,14 @@ export default function Pptpresenatation() {
                         onFocus={() => setActivePreviewIndex(index)}
                         onInput={(e) => updateSlideContent(slide.id, e.currentTarget.innerHTML)}
                         className={`w-full min-h-0 flex-1 overflow-hidden bg-transparent outline-none leading-[1.1] whitespace-pre-wrap ${selectedTemplate.text} ${selectedTemplate.font}`}
-                        style={{ fontSize: `${slide.format.fontSize}px`, fontFamily: slide.format.fontFamily, textAlign: slide.format.align }}
+                        style={{
+                          fontSize: `${slide.format.fontSize}px`,
+                          fontFamily: slide.format.fontFamily,
+                          textAlign: slide.format.align,
+                          fontWeight: slide.format.bold ? 'bold' : 'normal',
+                          fontStyle: slide.format.italic ? 'italic' : 'normal',
+                          textDecoration: slide.format.underline ? 'underline' : 'none',
+                        }}
                       />
                     </div>
                   </div>

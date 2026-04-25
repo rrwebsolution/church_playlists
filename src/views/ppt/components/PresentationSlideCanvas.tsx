@@ -78,6 +78,9 @@ export function PresentationSlideCanvas({
                 fontSize: `${Math.max(12, (slide.format.fontSize || 24) * fontScale)}px`,
                 fontFamily: slide.format.fontFamily,
                 textAlign: slide.format.align,
+                fontWeight: slide.format.bold ? 'bold' : 'normal',
+                fontStyle: slide.format.italic ? 'italic' : 'normal',
+                textDecoration: slide.format.underline ? 'underline' : 'none',
               }}
               dangerouslySetInnerHTML={{ __html: display.html }}
             />

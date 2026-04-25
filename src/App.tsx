@@ -345,20 +345,32 @@ export default function App() {
   });
 
   // BAG-ONG STATE SA APP.TSX PARA SA PPT PRESENTATIONS
-  const [presentations, setPresentations] = useState<PptPresentationFile[]>(() => {
-    const saved = localStorage.getItem('jamc_ppt_presentations');
-    if (!saved) return [];
-
-    try {
-      return normalizePresentationIds(JSON.parse(saved));
-    } catch {
-      return [];
-    }
-  });
+  const [presentations, setPresentations] = useState<PptPresentationFile[]>([]);
+  const [isPresentationsLoaded, setIsPresentationsLoaded] = useState(false);
+  const lastSavedPresentations = useRef<string>('');
 
   useEffect(() => {
-    localStorage.setItem('jamc_ppt_presentations', JSON.stringify(presentations));
-  }, [presentations]);
+    axiosInstance.get('ppt-presentations')
+      .then((res) => {
+        setPresentations(normalizePresentationIds(res.data));
+        lastSavedPresentations.current = JSON.stringify(res.data);
+      })
+      .catch(() => {})
+      .finally(() => setIsPresentationsLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    if (!isPresentationsLoaded) return;
+    const currentData = JSON.stringify(presentations);
+    if (currentData === lastSavedPresentations.current) return;
+
+    const timer = setTimeout(() => {
+      axiosInstance.post('ppt-presentations/sync', presentations)
+        .then(() => { lastSavedPresentations.current = currentData; })
+        .catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [presentations, isPresentationsLoaded]);
 
   const [servicePlans, setServicePlans] = useState<ServicePlan[]>(() => {
     const saved = localStorage.getItem('jamc_service_plans');
@@ -795,6 +807,8 @@ export default function App() {
   }, []);
 
   const handleImportYT = async (yt: any) => {
+    if (importingId) return;
+
     let existingFolder = null;
     const isDuplicateGlobally = folders.some(folder => {
       const exists = folder.songs.some(s => s.url === yt.url);
@@ -807,15 +821,13 @@ export default function App() {
         return; 
     }
 
-    const confirmImport = await Swal.fire({ title: 'Import Song?', text: `Add "${yt.title}"?`, icon: 'question', showCancelButton: true, confirmButtonColor: '#4f46e5' });
-    if (!confirmImport.isConfirmed) return;
-
     setImportingId(yt.videoId);
     try {
       const pendingSong: Song = { id: Date.now().toString(), title: yt.title, artist: yt.author, url: yt.url, lyrics: '', chords: '', isGenerating: true };
       insertImportedSong(pendingSong);
       setYoutubeResults([]);
       setInputValue('');
+      Toast.fire({ icon: 'info', title: 'Song added. Generating lyrics + chords...' });
       try {
         const newSong = await buildImportedSong(pendingSong);
         replaceImportedSong(pendingSong.id, newSong);

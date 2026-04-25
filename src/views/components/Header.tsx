@@ -127,6 +127,11 @@ export const Header = ({
     { id: 'system', label: 'System', icon: Laptop }
   ];
   const currentThemeIcon = themes.find(t => t.id === theme)?.icon || Laptop;
+  const hasYoutubeResults = searchMode === 'youtube' && !!youtubeResults?.length;
+  const submitButtonText = hasYoutubeResults
+    ? (importingId ? 'Adding...' : 'Add Selected')
+    : info.buttonText;
+  const SubmitIcon = hasYoutubeResults ? DownloadCloud : info.Icon;
 
   // --- KEYBOARD NAVIGATION (Command Selection Style) ---
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -147,6 +152,17 @@ export const Header = ({
         }
       }
     }
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    if (searchMode === 'youtube' && youtubeResults && youtubeResults.length > 0 && onImportYT) {
+      e.preventDefault();
+      onImportYT(youtubeResults[selectedIndex]);
+      setIsMobileSearchOpen(false);
+      return;
+    }
+
+    onSubmit(e);
   };
 
   return (
@@ -181,7 +197,7 @@ export const Header = ({
             </button>
           )}
           {info.showInput && (
-            <form onSubmit={onSubmit} className="flex w-full group relative shadow-sm rounded-2xl">
+            <form onSubmit={handleFormSubmit} className="flex w-full group relative shadow-sm rounded-2xl">
               {(activeFolderId || activeMenu === 'saved') && (
                 <select 
                   value={searchMode}
@@ -330,7 +346,7 @@ export const Header = ({
     {/* COMPACT FOOTER */}
     <div className="px-5 py-2.5 bg-zinc-50 dark:bg-zinc-950/30 border-t border-zinc-200/50 dark:border-white/5 flex justify-between items-center shrink-0">
        <span className="text-[8px] font-bold text-zinc-400 uppercase tracking-widest">
-         Tap any result to import to setlist
+         Press Enter or click Add Selected to import
        </span>
        <div className="flex gap-1">
           <div className={`w-1 h-1 rounded-full ${isFetching ? 'bg-indigo-500 animate-pulse' : 'bg-zinc-300'}`} />
@@ -353,9 +369,9 @@ export const Header = ({
   {isFetching ? (
     <div className="w-3 h-3 md:w-4 md:h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
   ) : (
-    <info.Icon className="w-3 h-3 md:w-4 md:h-4" />
+    <SubmitIcon className="w-3 h-3 md:w-4 md:h-4" />
   )}
-  <span className="hidden sm:inline">{info.buttonText}</span>
+  <span className="hidden sm:inline">{submitButtonText}</span>
 </button>
             </form>
           )}

@@ -656,9 +656,7 @@ export default function EasyWorshipController() {
   }, [quickSlides, liveSlideIndex, liveText, previewFontSize, bgType, fontFamily, videoUrl]);
 
   useEffect(() => {
-    if (liveText !== '') {
-      broadcastData(liveText, previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps);
-    }
+    broadcastData(liveText, previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps);
   }, [previewFontSize, bgType, fontFamily, videoUrl, isBold, isAllCaps]);
 
   const handleClearEditor = () => {

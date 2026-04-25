@@ -35,8 +35,8 @@ const CONFIGURED_OBS_STATE_URL = import.meta.env.VITE_OBS_STATE_URL || '';
 const OBS_STATE_API_URL = CONFIGURED_OBS_STATE_URL || (isLocalObsHost ? '/api/obs-state' : '/api/obs-state');
 const OBS_STATE_CHANNEL = 'jamc-obs-state';
 const OBS_STATE_CLIENT_ID_STORAGE_KEY = 'jamc_obs_state_client_id';
-const SHOULD_USE_LOCAL_PROJECTOR_SYNC =
-  isLocalObsHost || import.meta.env.VITE_PROJECTOR_LOCAL_SYNC === 'true';
+const SHOULD_USE_BROWSER_PROJECTOR_SYNC =
+  typeof window !== 'undefined';
 const OBS_STATE_POST_TIMEOUT_MS = 5000;
 const PROJECTOR_SYNC_MESSAGE_TYPE = 'jamc-projector-sync';
 const PROJECTOR_READY_MESSAGE_TYPE = 'jamc-projector-ready';
@@ -458,7 +458,6 @@ export default function EasyWorshipController() {
   const isOutputCleared = liveText === '';
 
   useEffect(() => {
-    if (!SHOULD_USE_LOCAL_PROJECTOR_SYNC) return;
     if (typeof BroadcastChannel === 'undefined') return;
 
     const channel = new BroadcastChannel(OBS_STATE_CHANNEL);
@@ -471,8 +470,6 @@ export default function EasyWorshipController() {
   }, []);
 
   useEffect(() => {
-    if (!SHOULD_USE_LOCAL_PROJECTOR_SYNC) return;
-
     const handleProjectorReady = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type !== PROJECTOR_READY_MESSAGE_TYPE) return;
@@ -586,7 +583,7 @@ export default function EasyWorshipController() {
 
     localStorage.setItem('jamc_live_display', JSON.stringify(data));
 
-    if (SHOULD_USE_LOCAL_PROJECTOR_SYNC) {
+    if (SHOULD_USE_BROWSER_PROJECTOR_SYNC) {
       obsBroadcastChannelRef.current?.postMessage(data);
       projectorWindowRef.current?.postMessage(
         { type: PROJECTOR_SYNC_MESSAGE_TYPE, payload: data },

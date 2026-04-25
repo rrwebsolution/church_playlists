@@ -29,8 +29,8 @@ const isLocalObsApi =
   })();
 const SHOULD_USE_OBS_STREAM =
   isLocalObsApi || import.meta.env.VITE_OBS_STATE_STREAM === 'true';
-const SHOULD_USE_LOCAL_PROJECTOR_SYNC =
-  isLocalObsHost || import.meta.env.VITE_PROJECTOR_LOCAL_SYNC === 'true';
+const SHOULD_USE_BROWSER_PROJECTOR_SYNC =
+  typeof window !== 'undefined';
 const OBS_STATE_FAST_POLL_INTERVAL_MS = 250;
 const OBS_STATE_IDLE_POLL_INTERVAL_MS = 200;
 const OBS_STATE_FAST_POLL_WINDOW_MS = 15000;
@@ -222,8 +222,6 @@ export default function EasyWorshipView() {
   }, []);
 
   useEffect(() => {
-    if (!SHOULD_USE_LOCAL_PROJECTOR_SYNC) return;
-
     const syncFromLocalStorage = () => {
       const raw = localStorage.getItem('jamc_live_display');
       if (!raw) return;
@@ -262,8 +260,6 @@ export default function EasyWorshipView() {
   }, [applyData, applyProjectorScene]);
 
   useEffect(() => {
-    if (!SHOULD_USE_LOCAL_PROJECTOR_SYNC) return;
-
     const resumeProjectorSync = (payload?: any) => {
       if (payload) {
         const nextText = String(payload.text ?? '').trim();
@@ -322,7 +318,7 @@ export default function EasyWorshipView() {
     };
 
     const shouldFullyPausePolling = () =>
-      isOutputClearedRef.current && SHOULD_USE_LOCAL_PROJECTOR_SYNC;
+      isOutputClearedRef.current && SHOULD_USE_BROWSER_PROJECTOR_SYNC;
 
     const fetchLatestState = async () => {
       if (isPolling || stopped) return;
@@ -406,7 +402,7 @@ export default function EasyWorshipView() {
       }, OBS_STATE_STREAM_FALLBACK_DELAY_MS);
     };
 
-    if (SHOULD_USE_LOCAL_PROJECTOR_SYNC && typeof BroadcastChannel !== 'undefined') {
+    if (SHOULD_USE_BROWSER_PROJECTOR_SYNC && typeof BroadcastChannel !== 'undefined') {
       channel = new BroadcastChannel(OBS_STATE_CHANNEL);
       channel.onmessage = (event) => {
         applyData(event.data);

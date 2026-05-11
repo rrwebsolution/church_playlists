@@ -24,6 +24,11 @@ const instance = axios.create({
 instance.interceptors.request.use(
     (config) => {
         const requestKey = generateRequestKey(config);
+        const token = localStorage.getItem('jamc_auth_token');
+
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
 
         // KINI ANG GIDUGANG:
         // Ayaw i-cancel kung ang URL kay para sa obs update

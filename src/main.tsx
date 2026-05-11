@@ -18,6 +18,9 @@ const OfferingRecords = lazy(() => import('./views/offering-records/OfferingReco
 const MemberDirectory = lazy(() => import('./views/member-directory/MemberDirectory.tsx'));
 const AnnouncementManager = lazy(() => import('./views/announcement-manager/AnnouncementManager.tsx'));
 const CalendarPlanning = lazy(() => import('./views/calendar-planning/CalendarPlanning.tsx'));
+const Login = lazy(() => import('./views/auth/Login.tsx'));
+const UserManagement = lazy(() => import('./views/users/Users.tsx'));
+const RoleManagement = lazy(() => import('./views/users/RoleManagement.tsx'));
 
 // EasyWorship Components
 const EasyWorshipController = lazy(() => import('./views/easyworship/EasyWorshipController.tsx'));
@@ -32,7 +35,15 @@ const PptViewer = lazy(() => import('./views/ppt/ppt-presentation/PptViewer.tsx'
 const routes = [
   {
     path: '/',
-    element: <Navigate to="/app/playlist" replace />,
+    element: <Navigate to="/login" replace />,
+  },
+  {
+    path: '/login',
+    element: (
+      <Suspense fallback={<Loader />}>
+        <Login />
+      </Suspense>
+    ),
   },
   {
     path: '/app',
@@ -139,6 +150,22 @@ const routes = [
         element: (
           <Suspense fallback={<Loader />}>
             <Settings />
+          </Suspense>
+        )
+      },
+      {
+        path: 'user-management',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <UserManagement />
+          </Suspense>
+        )
+      },
+      {
+        path: 'role-management',
+        element: (
+          <Suspense fallback={<Loader />}>
+            <RoleManagement />
           </Suspense>
         )
       },

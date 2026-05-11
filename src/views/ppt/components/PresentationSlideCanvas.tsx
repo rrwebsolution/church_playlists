@@ -81,6 +81,8 @@ export function PresentationSlideCanvas({
                 fontWeight: slide.format.bold ? 'bold' : 'normal',
                 fontStyle: slide.format.italic ? 'italic' : 'normal',
                 textDecoration: slide.format.underline ? 'underline' : 'none',
+                color: slide.format.color || undefined,
+                backgroundColor: slide.format.highlight || undefined,
               }}
               dangerouslySetInnerHTML={{ __html: display.html }}
             />

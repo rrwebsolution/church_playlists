@@ -7,18 +7,21 @@ function Loader() {
       
       {/* Ang CSS Loader */}
       <div className="relative flex items-center justify-center">
-        <span className="loader"></span>
-        {/* Subtle glow effect sa luyo sa spinner */}
+        <div className="logo-loader">
+          <div className="logo-loader-inner">
+            <img src="/logo.png" alt="JAMC Church" className="logo-loader-image" />
+          </div>
+        </div>
         <div className="absolute inset-0 bg-indigo-500/10 blur-3xl rounded-full scale-150 -z-10" />
       </div>
       
       {/* Loading Text */}
       <div className="flex flex-col items-center gap-2">
         <p className="text-zinc-900 dark:text-zinc-100 font-black text-sm uppercase tracking-[0.4em] animate-pulse ml-1">
-          Worship DJ
+          Management System
         </p>
         <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-bold uppercase tracking-widest">
-          Preparing Setlist...
+          Loading Dashboard...
         </span>
       </div>
 

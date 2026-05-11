@@ -30,7 +30,17 @@ export default function PptViewer() {
   }, [presentation?.slideData, presentation?.sourceText]);
 
   useEffect(() => {
+    setCurrentSlideIndex(0);
+  }, [presentation?.id]);
+
+  useEffect(() => {
+    setCurrentSlideIndex((current) => Math.min(current, Math.max(slides.length - 1, 0)));
+  }, [slides.length]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (slides.length === 0) return;
+
       if (e.key === 'ArrowRight' || e.key === ' ') {
         setCurrentSlideIndex(prev => Math.min(slides.length - 1, prev + 1));
       } else if (e.key === 'ArrowLeft') {
@@ -116,7 +126,7 @@ export default function PptViewer() {
         )}
         <div className={`${PRESENTATION_CANVAS_OVERLAY_CLASS} ${presentation.backgroundImageUrl ? 'bg-black/25' : 'bg-transparent'}`} />
         
-        {presentation.sourceText ? (
+        {slides.length > 0 ? (
           <div className={`w-full h-full flex flex-col items-center justify-center p-6 md:p-10 text-center relative transition-all duration-500 ${template.text} ${template.font}`}>
             <PresentationSlideCanvas
               slide={currentSlide}

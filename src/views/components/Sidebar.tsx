@@ -1,6 +1,7 @@
 import { 
   X, Folder, Bookmark, History, Settings, 
-  ChevronLeft, ChevronRight, Presentation, MonitorDot, HandCoins, Megaphone
+  ChevronLeft, ChevronRight, Presentation, MonitorDot, HandCoins, Megaphone,
+  ShieldCheck, UserPlus,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
@@ -72,6 +73,14 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, isCollapsed, setIsCol
         { id: 'settings', path: '/app/settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
       ],
     },
+    {
+      id: 'user-management',
+      label: 'User Management',
+      items: [
+        { id: 'users', path: '/app/user-management', label: 'Users', shortLabel: 'Users', icon: UserPlus },
+        { id: 'role-management', path: '/app/role-management', label: 'Role Management', shortLabel: 'Roles', icon: ShieldCheck },
+      ],
+    },
   ];
 
   return (
@@ -89,15 +98,17 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, isCollapsed, setIsCol
 
       <div className={`h-18 flex items-center ${isCollapsed ? 'md:justify-center px-6 md:px-0' : 'justify-between px-5'} border-b border-zinc-200 dark:border-zinc-800 overflow-hidden`}>
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-indigo-500 via-sky-500 to-cyan-400 text-white shadow-lg shadow-indigo-500/20">
-            <span className="text-sm font-black">J</span>
-          </div>
+          <img
+            src="/logo.png"
+            alt="JAMC Church"
+            className="h-10 w-10 shrink-0 rounded-2xl border border-zinc-200 bg-white object-contain p-1.5 shadow-lg shadow-indigo-500/10 dark:border-zinc-700"
+          />
           <div className={`min-w-0 transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'block'}`}>
             <p className="text-[11px] font-black uppercase tracking-[0.24em] text-zinc-900 dark:text-zinc-100">
               JAMC Church
             </p>
             <p className="text-[10px] font-semibold tracking-[0.14em] text-zinc-400 dark:text-zinc-500 uppercase">
-              Worship System
+              Management System
             </p>
           </div>
         </div>
@@ -118,7 +129,7 @@ export const Sidebar = ({ isSidebarOpen, setIsSidebarOpen, isCollapsed, setIsCol
 
               <div className="space-y-1">
                 {section.items.map((item) => {
-                  const isActive = location.pathname.startsWith(item.path);
+                  const isActive = location.pathname === item.path;
                   return (
                     <div key={item.id} className="relative group flex items-center">
                       <button

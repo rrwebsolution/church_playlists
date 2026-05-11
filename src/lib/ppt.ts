@@ -10,6 +10,8 @@ export interface SlideFormat {
   align: SlideTextAlign;
   fontSize: number;
   fontFamily: string;
+  color?: string;     // font color override, hex with #
+  highlight?: string; // text highlight/background color, hex with #
 }
 
 export interface PresentationSlide {
@@ -132,6 +134,28 @@ export const plainTextToHtml = (value?: string) =>
 const resolveExportTemplateTheme = (templateId?: string): ExportTemplateTheme =>
   exportTemplateThemes[templateId || ''] || exportTemplateThemes['classic-dark'];
 
+// Converts CSS color strings (hex or rgb()) to a 6-char uppercase hex for PptxGenJS.
+const parseColorToHex = (colorStr: string): string => {
+  if (!colorStr) return '';
+  if (/^#[0-9a-f]{6}$/i.test(colorStr)) return colorStr.slice(1).toUpperCase();
+  const match = colorStr.match(/rgbs*(s*(d+)s*,s*(d+)s*,s*(d+)s*)/i);
+  if (match) {
+    return [match[1], match[2], match[3]]
+      .map((n) => parseInt(n, 10).toString(16).padStart(2, '0'))
+      .join('')
+      .toUpperCase();
+  }
+  return '';
+};
+
+type TextMarks = {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  color: string;
+  highlight: string;
+};
+
 const htmlToPptTextRuns = (
   html: string | undefined,
   format: SlideFormat,
@@ -151,10 +175,7 @@ const htmlToPptTextRuns = (
     pendingBreak = true;
   };
 
-  const pushText = (
-    text: string,
-    marks: { bold: boolean; italic: boolean; underline: boolean },
-  ) => {
+  const pushText = (text: string, marks: TextMarks) => {
     const normalized = text.replace(/ /g, ' ');
     if (!normalized) return;
 
@@ -168,17 +189,15 @@ const htmlToPptTextRuns = (
       options: {
         bold: marks.bold,
         italic: marks.italic,
-        underline: marks.underline ? { color } : undefined,
-        color,
+        underline: marks.underline ? { color: marks.color } : undefined,
+        color: marks.color,
+        highlight: marks.highlight || undefined,
         breakLine: false,
       },
     });
   };
 
-  const walk = (
-    node: Node,
-    marks: { bold: boolean; italic: boolean; underline: boolean },
-  ) => {
+  const walk = (node: Node, marks: TextMarks) => {
     if (node.nodeType === Node.TEXT_NODE) {
       pushText(node.textContent || '', marks);
       return;
@@ -192,7 +211,10 @@ const htmlToPptTextRuns = (
       return;
     }
 
-    const nextMarks = {
+    const inlineColor = parseColorToHex(node.style.color || node.getAttribute('color') || '');
+    const inlineHighlight = parseColorToHex(node.style.backgroundColor || '');
+
+    const nextMarks: TextMarks = {
       bold:
         marks.bold ||
         ['b', 'strong'].includes(tag) ||
@@ -206,6 +228,8 @@ const htmlToPptTextRuns = (
         marks.underline ||
         tag === 'u' ||
         node.style.textDecoration.includes('underline'),
+      color: inlineColor || marks.color,
+      highlight: inlineHighlight || marks.highlight,
     };
 
     const isBlock = ['div', 'p', 'li'].includes(tag);
@@ -220,17 +244,21 @@ const htmlToPptTextRuns = (
     }
   };
 
+  const baseColor = parseColorToHex(format.color || '') || color;
+  const baseHighlight = parseColorToHex(format.highlight || '') || '';
+
   Array.from(container.childNodes).forEach((child) =>
     walk(child, {
       bold: format.bold,
       italic: format.italic,
       underline: format.underline,
+      color: baseColor,
+      highlight: baseHighlight,
     })
   );
 
   return runs;
 };
-
 const normalizeOutlineLine = (line: string) =>
   line
     .replace(/\t/g, ' ')
@@ -439,20 +467,15 @@ export const parsePptxFile = async (file: File): Promise<PresentationSlide[]> =>
         return createPresentationSlide({ id: Date.now() + index, text: '' });
       }
 
-      const normalizedXml = xml
-        .replace(/<a:tab\/>/g, '\t')
-        .replace(/<\/a:p>/g, '\n')
-        .replace(/<a:br\/>/g, '\n')
-        .replace(/<a:t>([\s\S]*?)<\/a:t>/g, (_, text: string) => escapeXml(text));
-
       const parser = new DOMParser();
-      const doc = parser.parseFromString(normalizedXml, 'application/xml');
+      const doc = parser.parseFromString(xml, 'application/xml');
       const textNodes = Array.from(doc.getElementsByTagNameNS('*', 't'))
         .map((node) => node.textContent?.trim() ?? '')
         .filter(Boolean);
 
       const fallbackText = stripXml(
-        normalizedXml
+        xml
+          .replace(/<a:tab\/>/g, '\t')
           .replace(/<\/a:p>/g, '\n')
           .replace(/<a:br\/>/g, '\n')
       );
@@ -523,7 +546,18 @@ export const exportSlidesToPptx = async ({
         });
       }
       const exportText = (slideData.text || htmlToPlainText(slideData.html)).trim();
-      const exportRuns = htmlToPptTextRuns(slideData.html, slideData.format, exportTheme.textColor);
+      const slideTextColor = slideData.format.color
+        ? slideData.format.color.replace('#', '')
+        : exportTheme.textColor;
+      const slideHighlight = slideData.format.highlight
+        ? slideData.format.highlight.replace('#', '')
+        : undefined;
+      const baseRuns = htmlToPptTextRuns(slideData.html, slideData.format, slideTextColor);
+      const exportRuns = baseRuns.length > 0
+        ? baseRuns.map((run) => slideHighlight ? { ...run, options: { ...run.options, highlight: slideHighlight } } : run)
+        : slideHighlight
+          ? [{ text: exportText, options: { color: slideTextColor, highlight: slideHighlight } }]
+          : [];
       const hasImage = Boolean(slideData.imageUrl);
 
       if (hasImage && slideData.imageUrl) {
@@ -541,7 +575,7 @@ export const exportSlidesToPptx = async ({
         y: hasImage ? 4.45 : 0.7,
         w: 12.1,
         h: hasImage ? 2.2 : 6.1,
-        color: exportTheme.textColor,
+        color: slideTextColor,
         bold: slideData.format.bold,
         italic: slideData.format.italic,
         underline: slideData.format.underline ? { color: exportTheme.textColor } : undefined,
@@ -554,6 +588,36 @@ export const exportSlidesToPptx = async ({
         fit: 'shrink',
       });
     });
+
+  await pptx.writeFile({ fileName: `${title || 'presentation'}.pptx` });
+};
+
+export const exportSlideImagesToPptx = async ({
+  title,
+  slideImages,
+  author = 'Church System',
+}: {
+  title: string;
+  slideImages: string[];
+  author?: string;
+}) => {
+  const pptx = new PptxGenJS();
+  pptx.layout = 'LAYOUT_WIDE';
+  pptx.author = author;
+  pptx.company = 'Church System';
+  pptx.subject = title;
+  pptx.title = title;
+
+  slideImages.forEach((imageData) => {
+    const slide = pptx.addSlide();
+    slide.addImage({
+      data: imageData,
+      x: 0,
+      y: 0,
+      w: 13.333,
+      h: 7.5,
+    });
+  });
 
   await pptx.writeFile({ fileName: `${title || 'presentation'}.pptx` });
 };

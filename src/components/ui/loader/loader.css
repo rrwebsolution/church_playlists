@@ -1,56 +1,82 @@
 /* loader.css */
 
-.loader {
-  width: 56px; /* Gi-adjust gamay ang gidak-on */
-  height: 56px;
-  /* Light mode ring: zinc-200 | Dark mode ring: zinc-800 */
-  border: 4px solid #e4e4e7; 
-  border-radius: 50%;
-  display: inline-block;
+.logo-loader {
+  width: 76px;
+  height: 76px;
+  border-radius: 24px;
   position: relative;
-  box-sizing: border-box;
-  animation: rotation 1.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #e4e4e7;
+  box-shadow:
+    0 20px 45px rgba(79, 70, 229, 0.18),
+    0 0 20px rgba(79, 70, 229, 0.12);
 }
 
-/* Dark mode ring color */
-.dark .loader {
-  border-color: #27272a; 
-}
-
-.loader::after,
-.loader::before {
-  content: '';  
-  box-sizing: border-box;
+.logo-loader::before {
+  content: '';
   position: absolute;
-  left: 50%;
-  top: 50%;
-  /* Primary Indigo Color */
-  background: #4f46e5; 
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  /* Smooth Glow */
-  box-shadow: 0 0 15px rgba(79, 70, 229, 0.6);
-  transform: translate(-50%, -50%);
+  inset: -35%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 42deg,
+    #4f46e5 64deg,
+    #22d3ee 86deg,
+    transparent 116deg,
+    transparent 220deg,
+    #f59e0b 250deg,
+    #ef4444 278deg,
+    transparent 316deg
+  );
+  animation: border-lights 1.7s linear infinite;
 }
 
-/* Positioning the dots on opposite sides */
-.loader::after {
-  margin-top: -28px; /* Half of height */
+.dark .logo-loader {
+  background: #27272a;
+  box-shadow:
+    0 20px 55px rgba(99, 102, 241, 0.24),
+    0 0 24px rgba(99, 102, 241, 0.16);
 }
 
-.loader::before {
-  margin-top: 28px; /* Half of height */
+.logo-loader-inner {
+  position: absolute;
+  inset: 4px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #ffffff, #f4f4f5);
+  animation: logo-pulse 1.4s ease-in-out infinite;
 }
 
-/* Dark mode dot color */
-.dark .loader::after,
-.dark .loader::before {
-  background: #6366f1;
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.8);
+.dark .logo-loader-inner {
+  background: linear-gradient(145deg, #18181b, #09090b);
 }
 
-@keyframes rotation {
+.logo-loader-image {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 7px;
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes border-lights {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+@keyframes logo-pulse {
+  0%, 100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
 }

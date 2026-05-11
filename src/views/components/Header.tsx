@@ -1,9 +1,10 @@
 import { 
   Menu, Plus, Search, Sun, Moon, Laptop, 
   ChevronDown, User, Headphones, DownloadCloud, X, BookOpen,
+  LogOut, ShieldCheck,
 } from 'lucide-react';
 import React, { useEffect, useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
   activeMenu: string;
@@ -32,13 +33,27 @@ export const Header = ({
   youtubeResults, setYoutubeResults, onImportYT, importingId
 }: HeaderProps) => {
   const location = useLocation();
+  const navigate = useNavigate();
   
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [isThemeOpen, setIsThemeOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false); // STATE PARA SA MOBILE SEARCH
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
   const isPptPresentationRoute = /\/app\/ppt-presentation\/?$/.test(location.pathname);
+  const authUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('jamc_auth_user') || '{}');
+    } catch {
+      return {};
+    }
+  })();
+  const profileName = authUser.name || 'JAMC Admin';
+  const profileEmail = authUser.email || 'admin@jamc.church';
+  const profileRole = authUser.role || 'System Administrator';
+  const profileAvatar = authUser.avatar || authUser.picture || '';
 
   // Reset keyboard cursor if list changes
   useEffect(() => { setSelectedIndex(0); }, [youtubeResults]);
@@ -68,10 +83,18 @@ export const Header = ({
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsThemeOpen(false);
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setIsProfileOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('jamc_auth_token');
+    localStorage.removeItem('jamc_auth_user');
+    setIsProfileOpen(false);
+    navigate('/login', { replace: true });
+  };
 
   const getHeaderInfo = () => {
     const query = inputValue.trim();
@@ -101,6 +124,12 @@ export const Header = ({
     }
     if (activeMenu === 'calendar-planning') {
       return { label: 'Calendar Planning', showInput: false };
+    }
+    if (activeMenu === 'user-management') {
+      return { label: 'Users', showInput: false };
+    }
+    if (activeMenu === 'role-management') {
+      return { label: 'Role Management', showInput: false };
     }
     if (activeMenu === 'saved' || activeFolderId) {
       if (searchMode === 'youtube') return { placeholder: "Type a few letters to auto-search YouTube...", buttonText: isFetching ? "Searching..." : "Search YT", Icon: Search, showInput: true };
@@ -175,7 +204,7 @@ export const Header = ({
             <Menu className="w-5 h-5" />
           </button>
           <h2 className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-500 hidden sm:block">
-            {isPptPresentationRoute ? "PPT Presentation" : activeMenu === 'service-planner' ? "Service Planner" : activeMenu === 'sermon-notes' ? "Sermon Notes" : activeMenu === 'volunteer-scheduling' ? "Volunteer Scheduling" : activeMenu === 'attendance-tracking' ? "Attendance Tracking" : activeMenu === 'offering-records' ? "Offering Records" : activeMenu === 'member-directory' ? "Member Directory" : activeMenu === 'announcement-manager' ? "Announcement Manager" : activeMenu === 'calendar-planning' ? "Calendar Planning" : activeMenu === 'saved' ? "Saved Songs" : activeFolderId ? "Folder Explorer" : "Playlist Manager"}
+            {isPptPresentationRoute ? "PPT Presentation" : activeMenu === 'service-planner' ? "Service Planner" : activeMenu === 'sermon-notes' ? "Sermon Notes" : activeMenu === 'volunteer-scheduling' ? "Volunteer Scheduling" : activeMenu === 'attendance-tracking' ? "Attendance Tracking" : activeMenu === 'offering-records' ? "Offering Records" : activeMenu === 'member-directory' ? "Member Directory" : activeMenu === 'announcement-manager' ? "Announcement Manager" : activeMenu === 'calendar-planning' ? "Calendar Planning" : activeMenu === 'user-management' ? "Users" : activeMenu === 'role-management' ? "Role Management" : activeMenu === 'saved' ? "Saved Songs" : activeFolderId ? "Folder Explorer" : "Playlist Manager"}
           </h2>
         </div>
 
@@ -419,11 +448,59 @@ export const Header = ({
             )}
           </div>
           
-          {/* USER AVATAR (Visible on all screens) */}
-          <div className="flex items-center pl-1.5 md:pl-4 md:border-l border-zinc-200 dark:border-zinc-800 ml-1 md:ml-0">
-            <div className="w-8 h-8 md:w-10 md:h-10 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm cursor-pointer hover:scale-105 transition-transform">
-              <User className="w-4 h-4 md:w-5 md:h-5" />
-            </div>
+          {/* USER PROFILE */}
+          <div className="relative flex items-center pl-1.5 md:pl-4 md:border-l border-zinc-200 dark:border-zinc-800 ml-1 md:ml-0" ref={profileRef}>
+            <button
+              type="button"
+              onClick={() => setIsProfileOpen((current) => !current)}
+              className="flex items-center gap-2 rounded-2xl p-1.5 transition-all hover:bg-zinc-100 active:scale-95 dark:hover:bg-zinc-800"
+              title="Open profile"
+            >
+              <div className="w-8 h-8 md:w-10 md:h-10 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm overflow-hidden">
+                {profileAvatar ? (
+                  <img src={profileAvatar} alt={profileName} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <User className="w-4 h-4 md:w-5 md:h-5" />
+                )}
+              </div>
+              <div className="hidden xl:block max-w-36 text-left">
+                <p className="truncate text-xs font-black text-zinc-800 dark:text-zinc-100">{profileName}</p>
+                <p className="truncate text-[10px] font-semibold text-zinc-400 dark:text-zinc-500">{profileRole}</p>
+              </div>
+              <ChevronDown className={`hidden h-3 w-3 text-zinc-400 transition-transform sm:block ${isProfileOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isProfileOpen && (
+              <div className="absolute right-0 top-[calc(100%+0.65rem)] w-72 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl shadow-zinc-200/70 animate-in fade-in zoom-in-95 duration-200 dark:border-zinc-800 dark:bg-zinc-900 dark:shadow-black/40 z-90">
+                <div className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-indigo-100 bg-indigo-50 text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
+                      {profileAvatar ? (
+                        <img src={profileAvatar} alt={profileName} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <User className="h-5 w-5" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-zinc-900 dark:text-zinc-100">{profileName}</p>
+                      <p className="truncate text-xs font-semibold text-zinc-500 dark:text-zinc-400">{profileEmail}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center gap-2 rounded-2xl bg-zinc-50 px-3 py-2.5 text-xs font-bold text-zinc-600 dark:bg-zinc-950 dark:text-zinc-300">
+                    <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                    {profileRole}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-3 border-t border-zinc-200 px-4 py-3 text-left text-sm font-bold text-red-600 transition-colors hover:bg-red-50 dark:border-zinc-800 dark:text-red-300 dark:hover:bg-red-500/10"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

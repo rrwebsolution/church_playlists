@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './views/components/Sidebar';
 import { Header } from './views/components/Header';
 import { Footer } from './views/components/Footer';
@@ -279,6 +279,11 @@ const createDefaultCalendarEvents = (): CalendarEvent[] => [
 
 export default function App() {
   const location = useLocation();
+  const authUser = localStorage.getItem('jamc_auth_user');
+
+  if (!authUser) {
+    return <Navigate to="/login" replace />;
+  }
 
   const isEasyWorshipPage = location.pathname.includes('/app/easyworship');
   const isMinistryToolRoute =
@@ -289,7 +294,9 @@ export default function App() {
     || location.pathname.includes('/app/offering-records')
     || location.pathname.includes('/app/member-directory')
     || location.pathname.includes('/app/announcement-manager')
-    || location.pathname.includes('/app/calendar-planning');
+    || location.pathname.includes('/app/calendar-planning')
+    || location.pathname.includes('/app/user-management')
+    || location.pathname.includes('/app/role-management');
   const isFooterHiddenRoute =
     location.pathname.includes('/app/ppt-presentation')
     || location.pathname.includes('/app/settings')
@@ -314,7 +321,8 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   
   const ytPlayerRef = useRef<any>(null);
-  const [ytPlayer, setYtPlayer] = useState<any>(null); 
+  const [ytPlayer, setYtPlayer] = useState<any>(null);
+  const volumeRef = useRef<number>(0.8);
   
   const [isAutoPlayNextEnabled, setIsAutoPlayNextEnabled] = useState(() => {
     const saved = localStorage.getItem('autoplay_next_enabled');
@@ -332,6 +340,7 @@ export default function App() {
   
   const [showFloatingPlayer, setShowFloatingPlayer] = useState(true);
   const [volume, setVolume] = useState(0.8);
+  volumeRef.current = volume; // keep ref in sync without adding to initPlayer deps
   const [isClient, setIsClient] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -577,7 +586,7 @@ export default function App() {
         onReady: (event: any) => {
           ytPlayerRef.current = event.target; 
           setYtPlayer(event.target);
-          event.target.setVolume(Math.round(volume * 100));
+          event.target.setVolume(Math.round(volumeRef.current * 100));
           
           if (initialId) {
             event.target.playVideo();
@@ -592,7 +601,7 @@ export default function App() {
         }
       }
     });
-  }, [volume]);
+  }, []);
 
   useEffect(() => {
     if (!isClient) return;
@@ -953,6 +962,10 @@ export default function App() {
                     ? 'announcement-manager'
                   : location.pathname.includes('calendar-planning')
                       ? 'calendar-planning'
+                      : location.pathname.includes('user-management')
+                        ? 'user-management'
+                        : location.pathname.includes('role-management')
+                          ? 'role-management'
         : 'home';
 
   return (

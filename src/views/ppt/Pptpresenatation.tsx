@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import JSZip from 'jszip';
 import {
   Presentation, Search, Trash2, CalendarDays,
@@ -79,13 +79,17 @@ const FONT_SIZE_OPTIONS = Array.from(
   { length: MAX_FONT_SIZE - MIN_FONT_SIZE + 1 },
   (_, index) => MIN_FONT_SIZE + index
 );
-const TEMPLATE_EXPORT_LOOKS: Record<string, { background: string; text: string }> = {
-  'classic-dark': { background: '#09090B', text: '#FFFFFF' },
-  'modern-light': { background: '#FAFAFA', text: '#18181B' },
-  'worship-blue': { background: '#172554', text: '#E0F2FE' },
-  'sunset-gradient': { background: '#7F1D1D', text: '#FFF7ED' },
-  'minimal-green': { background: '#022C22', text: '#ECFDF5' },
-  'royal-purple': { background: '#4C1D95', text: '#FAE8FF' },
+const getSlidePlainText = (slide?: PresentationSlide) =>
+  (slide?.text || htmlToPlainText(slide?.html)).trim();
+const getPresentationTitleFromSlides = (slides: PresentationSlide[], fallback = 'Presentation') =>
+  getSlidePlainText(slides[0]).split('\n')[0]?.substring(0, 40).trim() || fallback;
+const TEMPLATE_EXPORT_LOOKS: Record<string, { background: string; text: string; accent: string; gradientStops?: string[] }> = {
+  'classic-dark': { background: '#09090B', text: '#FFFFFF', accent: '#818CF8' },
+  'modern-light': { background: '#FAFAFA', text: '#18181B', accent: '#4F46E5' },
+  'worship-blue': { background: '#172554', text: '#FFFFFF', accent: '#7DD3FC', gradientStops: ['#312E81', '#1E3A8A', '#000000'] },
+  'sunset-gradient': { background: '#7F1D1D', text: '#FFF7ED', accent: '#FACC15', gradientStops: ['#7C2D12', '#7F1D1D', '#09090B'] },
+  'minimal-green': { background: '#022C22', text: '#ECFDF5', accent: '#34D399' },
+  'royal-purple': { background: '#4C1D95', text: '#FAE8FF', accent: '#E879F9', gradientStops: ['#581C87', '#312E81'] },
 };
 const BIBLE_BOOK_SUGGESTIONS = [
   { name: 'Genesis', aliases: ['gen', 'ge', 'gn'] },
@@ -237,6 +241,7 @@ export default function Pptpresenatation() {
   const editorRef = useRef<HTMLDivElement>(null);
   const slideEditorRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const activeMenuRef = useRef<HTMLDivElement | null>(null);
+  const savedSelectionRef = useRef<{ range: Range; editorId: number } | null>(null);
 
   const [editorMode, setEditorMode] = useState<EditorMode>('create');
   const [generateTitle, setGenerateTitle] = useState('');
@@ -281,6 +286,7 @@ export default function Pptpresenatation() {
   }, [filteredAndCategorizedPresentations]);
 
   const validSlides = useMemo(() => slidesToGenerate.filter((slide) => (slide.text || htmlToPlainText(slide.html)).trim() !== '' || slide.imageUrl), [slidesToGenerate]);
+  const activeSlideIndex = Math.min(activePreviewIndex, Math.max(slidesToGenerate.length - 1, 0));
   const bibleBookSuggestions = useMemo(() => {
     const query = bibleReference.trim().toLowerCase();
     if (!query) return [];
@@ -334,6 +340,10 @@ export default function Pptpresenatation() {
       }
     });
   }, [slidesToGenerate]);
+
+  useEffect(() => {
+    setActivePreviewIndex((current) => Math.min(current, Math.max(slidesToGenerate.length - 1, 0)));
+  }, [slidesToGenerate.length]);
 
   const resetEditor = () => {
     setEditingId(null);
@@ -414,7 +424,7 @@ export default function Pptpresenatation() {
       return;
     }
 
-    const finalTitle = generateTitle.trim() || validSlides[0].text.split('\n')[0].substring(0, 40) || 'Untitled Presentation';
+    const finalTitle = generateTitle.trim() || getPresentationTitleFromSlides(validSlides, 'Untitled Presentation');
     const presentationData = buildPresentationData(validSlides, finalTitle, toSourceType(editorMode));
     upsertPresentation(presentationData, editingId ? 'Presentation Updated!' : 'Slides Saved!');
     setGenerateTitle(finalTitle);
@@ -570,7 +580,7 @@ export default function Pptpresenatation() {
 
     const verseBlock = [finalReference, bibleVerseText.trim()].filter(Boolean).join('\n');
     setSlidesToGenerate((prev) => prev.map((slide, index) => (
-      index === activePreviewIndex
+      index === activeSlideIndex
         ? {
             ...slide,
             text: slide.text.trim() ? `${slide.text}\n\n${verseBlock}` : verseBlock,
@@ -587,14 +597,20 @@ export default function Pptpresenatation() {
       return;
     }
 
-    const finalTitle = generateTitle.trim() || validSlides[0].text.split('\n')[0].substring(0, 40) || 'Presentation';
+    const finalTitle = generateTitle.trim() || getPresentationTitleFromSlides(validSlides, 'Presentation');
     setIsExporting(true);
     try {
-      await exportSlidesToPptx({ title: finalTitle, slides: validSlides, templateId: selectedTemplateId, backgroundImageUrl: selectedBackgroundImageUrl || undefined });
+      await exportSlidesToPptx({
+        title: finalTitle,
+        slides: validSlides,
+        templateId: selectedTemplateId,
+        backgroundImageUrl: selectedBackgroundImageUrl || undefined,
+      });
       const presentationData = buildPresentationData(validSlides, finalTitle, toSourceType(editorMode));
       upsertPresentation(presentationData, 'PPT file downloaded!');
-    } catch {
-      Toast.fire({ icon: 'error', title: 'Export failed.' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Export failed.';
+      Toast.fire({ icon: 'error', title: message });
     } finally {
       setIsExporting(false);
     }
@@ -630,6 +646,43 @@ export default function Pptpresenatation() {
     }
   };
 
+  const saveCurrentSelection = (id: number) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    const editor = slideEditorRefs.current[id];
+    if (!editor || !editor.contains(range.commonAncestorContainer)) return;
+    savedSelectionRef.current = { range: range.cloneRange(), editorId: id };
+  };
+
+  const applyColorToSelection = (id: number, color: string) => {
+    const editor = slideEditorRefs.current[id];
+    if (!editor) return;
+    editor.focus();
+    const saved = savedSelectionRef.current;
+    if (saved && saved.editorId === id) {
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(saved.range); }
+    }
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('foreColor', false, color);
+    updateSlideContent(id, editor.innerHTML);
+  };
+
+  const applyHighlightToSelection = (id: number, color: string) => {
+    const editor = slideEditorRefs.current[id];
+    if (!editor) return;
+    editor.focus();
+    const saved = savedSelectionRef.current;
+    if (saved && saved.editorId === id) {
+      const sel = window.getSelection();
+      if (sel) { sel.removeAllRanges(); sel.addRange(saved.range); }
+    }
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand('hiliteColor', false, color);
+    updateSlideContent(id, editor.innerHTML);
+  };
+
   const escapeSvgText = (value: string) => value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -637,37 +690,43 @@ export default function Pptpresenatation() {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
 
-  const wrapSvgText = (text: string, maxCharsPerLine: number) => {
-    const normalizedLines = text.split('\n');
-    const wrappedLines: string[] = [];
+  const getExportBackgroundSvg = (look: typeof TEMPLATE_EXPORT_LOOKS[string]) => {
+    if (!look.gradientStops?.length) {
+      return {
+        defs: '',
+        rect: `<rect width="1600" height="900" fill="${look.background}" />`,
+      };
+    }
 
-    normalizedLines.forEach((line) => {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) {
-        wrappedLines.push('');
-        return;
-      }
+    const lastIndex = Math.max(look.gradientStops.length - 1, 1);
+    const stops = look.gradientStops
+      .map((color, index) => `<stop offset="${(index / lastIndex) * 100}%" stop-color="${color}" />`)
+      .join('');
 
-      const words = trimmedLine.split(/\s+/);
-      let currentLine = '';
+    return {
+      defs: `<defs><linearGradient id="slideBg" x1="0%" y1="0%" x2="100%" y2="100%">${stops}</linearGradient></defs>`,
+      rect: '<rect width="1600" height="900" fill="url(#slideBg)" />',
+    };
+  };
 
-      words.forEach((word) => {
-        const candidate = currentLine ? `${currentLine} ${word}` : word;
-        if (candidate.length <= maxCharsPerLine || !currentLine) {
-          currentLine = candidate;
-          return;
-        }
-
-        wrappedLines.push(currentLine);
-        currentLine = word;
+  // Serialize HTML to XHTML so it is valid XML for embedding inside SVG <foreignObject>.
+  // innerHTML is HTML5 (void elements like <br> are not self-closing), which breaks SVG XML parsing.
+  const serializeHtmlAsXhtml = (html: string): string => {
+    try {
+      const container = document.createElement('div');
+      container.innerHTML = html;
+      const serializer = new XMLSerializer();
+      const parts: string[] = [];
+      Array.from(container.childNodes).forEach((node) => {
+        let serialized = serializer.serializeToString(node);
+        // XMLSerializer adds xmlns="http://www.w3.org/1999/xhtml" to each root node — strip duplicates
+        serialized = serialized.replace(/ xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"/g, '');
+        parts.push(serialized);
       });
-
-      if (currentLine) {
-        wrappedLines.push(currentLine);
-      }
-    });
-
-    return wrappedLines;
+      return parts.join('') || '&#160;';
+    } catch {
+      return '&#160;';
+    }
   };
 
   const buildSlideJpgDataUrl = async (slide: PresentationSlide, slideIndex: number) => {
@@ -675,6 +734,7 @@ export default function Pptpresenatation() {
 
     try {
       const look = TEMPLATE_EXPORT_LOOKS[selectedTemplateId] || TEMPLATE_EXPORT_LOOKS['classic-dark'];
+      const backgroundSvg = getExportBackgroundSvg(look);
       const width = 1600;
       const height = 900;
       const paddingX = 76;
@@ -690,18 +750,45 @@ export default function Pptpresenatation() {
         (slide.imageUrl && !exportSlideImageUrl)
       );
       const fontSize = Math.max(32, slide.format.fontSize * 2);
-      const lineHeight = Math.round(fontSize * 1.22);
-      const plainText = htmlToPlainText(slide.html || plainTextToHtml(slide.text)).replace(/\r\n/g, '\n').trim();
-      const maxCharsPerLine = Math.max(12, Math.floor(contentWidth / (fontSize * 0.55)));
-      const wrappedLines = wrapSvgText(plainText, maxCharsPerLine);
-      const lineCount = Math.max(1, wrappedLines.length);
-      const textBlockHeight = lineCount * lineHeight;
       const imageGap = exportSlideImageUrl ? 34 : 0;
       const imageHeight = exportSlideImageUrl ? Math.min(contentHeight * 0.42, 320) : 0;
-      const totalContentHeight = imageHeight + imageGap + textBlockHeight;
-      const startY = Math.max(paddingY + (fontSize * 0.9), ((height - totalContentHeight) / 2) + fontSize);
-      const imageY = startY - fontSize;
-      const textStartY = imageY + imageHeight + imageGap + fontSize;
+      const textHeight = contentHeight - imageHeight - imageGap;
+      const fontStyle = slide.format.italic ? 'italic' : 'normal';
+      const fontWeight = slide.format.bold ? 700 : 400;
+      const imageX = paddingX;
+      const imageWidth = contentWidth;
+      const imageY = paddingY;
+      const textY = exportSlideImageUrl ? paddingY + imageHeight + imageGap : paddingY;
+      const lineHeight = Math.round(fontSize * 1.18);
+      const plainText = htmlToPlainText(slide.html || plainTextToHtml(slide.text)).replace(/\r\n/g, '\n').trim();
+      const maxCharsPerLine = Math.max(10, Math.floor(contentWidth / (fontSize * 0.52)));
+      const wrappedLines: string[] = [];
+      plainText.split('\n').forEach((line) => {
+        const words = line.trim().split(/\s+/).filter(Boolean);
+        let currentLine = '';
+
+        if (words.length === 0) {
+          wrappedLines.push('');
+          return;
+        }
+
+        words.forEach((word) => {
+          const candidate = currentLine ? `${currentLine} ${word}` : word;
+          if (candidate.length <= maxCharsPerLine || !currentLine) {
+            currentLine = candidate;
+            return;
+          }
+
+          wrappedLines.push(currentLine);
+          currentLine = word;
+        });
+
+        if (currentLine) wrappedLines.push(currentLine);
+      });
+      const visibleLineLimit = Math.max(1, Math.floor(textHeight / lineHeight));
+      const visibleLines = wrappedLines.slice(0, visibleLineLimit);
+      const textBlockHeight = Math.max(1, visibleLines.length) * lineHeight;
+      const textStartY = textY + Math.max(fontSize, ((textHeight - textBlockHeight) / 2) + fontSize);
       const textAnchor = slide.format.align === 'center'
         ? 'middle'
         : slide.format.align === 'right'
@@ -712,55 +799,50 @@ export default function Pptpresenatation() {
         : slide.format.align === 'right'
           ? width - paddingX
           : paddingX;
-      const underlineDecoration = slide.format.underline ? 'text-decoration="underline"' : '';
-      const fontStyle = slide.format.italic ? 'italic' : 'normal';
-      const fontWeight = slide.format.bold ? 700 : 400;
-      const imageX = paddingX;
-      const imageWidth = contentWidth;
+      const textDecoration = slide.format.underline ? ' text-decoration="underline"' : '';
       const imageMarkup = exportSlideImageUrl
         ? `
-          <rect x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" rx="24" ry="24" fill="rgba(0,0,0,0.22)" />
+          <rect x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" rx="24" ry="24" fill="#000000" opacity="0.22" />
           <image href="${exportSlideImageUrl}" x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" preserveAspectRatio="xMidYMid meet" />
         `
         : '';
-      const textMarkup = wrappedLines.length > 0
-        ? wrappedLines.map((line, lineIndex) => (
+      const textMarkup = visibleLines.length > 0
+        ? visibleLines.map((line, lineIndex) => (
             `<tspan x="${textX}" y="${textStartY + (lineIndex * lineHeight)}">${line ? escapeSvgText(line) : '&#160;'}</tspan>`
           )).join('')
-        : `<tspan x="${textX}" y="${textStartY}">&#160;</tspan>`;
+        : `<tspan x="${textX}" y="${textStartY}">${serializeHtmlAsXhtml('')}</tspan>`;
 
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-          <rect width="${width}" height="${height}" fill="${look.background}" />
+          ${backgroundSvg.defs}
+          ${backgroundSvg.rect}
           ${exportBackgroundImageUrl ? `<image href="${exportBackgroundImageUrl}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" />` : ''}
-          ${exportBackgroundImageUrl ? `<rect width="${width}" height="${height}" fill="rgba(0,0,0,0.25)" />` : ''}
+          ${exportBackgroundImageUrl ? `<rect width="${width}" height="${height}" fill="#000000" opacity="0.25" />` : ''}
           ${imageMarkup}
           <text
-            x="${textX}"
-            y="${textStartY}"
             fill="${look.text}"
             font-size="${fontSize}"
             font-family="${escapeSvgText(slide.format.fontFamily || 'Arial')}, Arial, sans-serif"
             font-weight="${fontWeight}"
             font-style="${fontStyle}"
             text-anchor="${textAnchor}"
-            ${underlineDecoration}
+            dominant-baseline="alphabetic"
+            ${textDecoration}
           >${textMarkup}</text>
         </svg>
       `;
-      const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
-      svgUrl = URL.createObjectURL(svgBlob);
+      // Use base64 data URL instead of blob URL — blob URLs for SVGs with
+      // <foreignObject> are blocked by browser security in some contexts.
+      const svgBytes = new TextEncoder().encode(svg);
+      const svgBinary = Array.from(svgBytes, (b) => String.fromCharCode(b)).join('');
+      svgUrl = `data:image/svg+xml;base64,${btoa(svgBinary)}`;
       const image = new Image();
 
       await new Promise<void>((resolve, reject) => {
-        if (!svgUrl) {
-          reject(new Error('Unable to prepare slide image.'));
-          return;
-        }
         image.decoding = 'sync';
         image.onload = () => resolve();
         image.onerror = () => reject(new Error(`Unable to render slide ${slideIndex + 1}.`));
-        image.src = svgUrl;
+        image.src = svgUrl!;
       });
 
       const canvas = document.createElement('canvas');
@@ -780,14 +862,13 @@ export default function Pptpresenatation() {
         skippedExternalImages,
       };
     } finally {
-      if (svgUrl) {
-        URL.revokeObjectURL(svgUrl);
-      }
+      // svgUrl is now a data URL, so no revocation needed.
+      svgUrl = null;
     }
   };
 
   const handleExportJpg = async () => {
-    if (slidesToGenerate.length === 0) {
+    if (validSlides.length === 0) {
       Toast.fire({ icon: 'warning', title: 'Add at least one slide first.' });
       return;
     }
@@ -798,8 +879,8 @@ export default function Pptpresenatation() {
       const exportZip = new JSZip();
       let skippedExternalImages = false;
 
-      for (let index = 0; index < slidesToGenerate.length; index += 1) {
-        const { jpgUrl, skippedExternalImages: skippedForSlide } = await buildSlideJpgDataUrl(slidesToGenerate[index], index);
+      for (let index = 0; index < validSlides.length; index += 1) {
+        const { jpgUrl, skippedExternalImages: skippedForSlide } = await buildSlideJpgDataUrl(validSlides[index], index);
         skippedExternalImages = skippedExternalImages || skippedForSlide;
         const base64Data = jpgUrl.split(',')[1] || '';
         exportZip.file(
@@ -911,6 +992,18 @@ export default function Pptpresenatation() {
     if (nextFormatKey) {
       const isActive = document.queryCommandState(command);
       updateSlideFormat(id, (format) => ({ ...format, [nextFormatKey]: isActive }));
+    }
+  };
+
+  const handleSlidePaste = (event: ClipboardEvent<HTMLDivElement>, id: number) => {
+    const plainText = event.clipboardData.getData('text/plain');
+    if (!plainText) return;
+
+    event.preventDefault();
+    document.execCommand('insertText', false, plainText);
+    const target = slideEditorRefs.current[id];
+    if (target) {
+      updateSlideContent(id, target.innerHTML);
     }
   };
 
@@ -1149,6 +1242,39 @@ export default function Pptpresenatation() {
                           <button key={value} onClick={() => runEditorCommand(slide.id, value === 'left' ? 'justifyLeft' : value === 'center' ? 'justifyCenter' : value === 'right' ? 'justifyRight' : 'justifyFull')} className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20" title={label}><Icon className="w-4 h-4" /></button>
                         ))}
                       </div>
+
+                      {/* Font Color — applies only to selected text */}
+                      <label
+                        title="Font Color (select text first)"
+                        onMouseDown={() => saveCurrentSelection(slide.id)}
+                        className="relative flex flex-col items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all"
+                      >
+                        <span className="text-xs font-black leading-none">A</span>
+                        <span className="mt-0.5 w-4 h-1 rounded-full bg-current" />
+                        <input
+                          type="color"
+                          defaultValue="#ffffff"
+                          onChange={(e) => applyColorToSelection(slide.id, e.target.value)}
+                          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                        />
+                      </label>
+
+                      {/* Highlight Color — applies only to selected text */}
+                      <label
+                        title="Highlight Color (select text first)"
+                        onMouseDown={() => saveCurrentSelection(slide.id)}
+                        className="relative flex flex-col items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all"
+                      >
+                        <span className="text-xs font-black leading-none px-1 rounded-sm bg-yellow-300 text-black">H</span>
+                        <span className="mt-0.5 w-4 h-1 rounded-full bg-yellow-300" />
+                        <input
+                          type="color"
+                          defaultValue="#ffff00"
+                          onChange={(e) => applyHighlightToSelection(slide.id, e.target.value)}
+                          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                        />
+                      </label>
+
                       <label className="rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 transition-all text-zinc-600 dark:text-zinc-300 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 cursor-pointer">
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => handleSlideImageUpload(slide.id, e.target.files?.[0])} />
                         <ImagePlus className="w-4 h-4" />
@@ -1184,6 +1310,7 @@ export default function Pptpresenatation() {
                         }}
                         onFocus={() => setActivePreviewIndex(index)}
                         onInput={(e) => updateSlideContent(slide.id, e.currentTarget.innerHTML)}
+                        onPaste={(e) => handleSlidePaste(e, slide.id)}
                         className={`w-full min-h-0 flex-1 overflow-hidden bg-transparent outline-none leading-[1.1] whitespace-pre-wrap ${selectedTemplate.text} ${selectedTemplate.font}`}
                         style={{
                           fontSize: `${slide.format.fontSize}px`,
@@ -1192,6 +1319,8 @@ export default function Pptpresenatation() {
                           fontWeight: slide.format.bold ? 'bold' : 'normal',
                           fontStyle: slide.format.italic ? 'italic' : 'normal',
                           textDecoration: slide.format.underline ? 'underline' : 'none',
+                          color: slide.format.color || undefined,
+                          backgroundColor: slide.format.highlight || undefined,
                         }}
                       />
                     </div>
